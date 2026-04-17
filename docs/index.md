@@ -1,149 +1,66 @@
-# climate docs
+# climate
 
-Human-first documentation for `climate`, a Go CLI that turns OpenAPI 3.x specs
-into auth-aware command-line tools and agent-ready skills.
+Any API becomes a tool. Give climate an OpenAPI spec — it builds a CLI and an agent skill.
+One spec, one command, unlimited new tools.
 
-Canonical site: <https://disk0dancer.github.io/climate/>
-Repository: <https://github.com/disk0Dancer/climate>
+Site: <https://disk0dancer.github.io/climate/>
+Repo: <https://github.com/disk0Dancer/climate>
 
 ## Install
 
-### Go
-
 ```bash
-go install github.com/disk0Dancer/climate/cmd/climate@latest
+brew tap disk0Dancer/tap && brew install climate
 ```
 
-### GitHub Releases
-
-```bash
-curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate-darwin-arm64.tar.gz | tar xz
-sudo mv climate-darwin-arm64 /usr/local/bin/climate
-```
-
-### Homebrew
-
-```bash
-brew tap disk0Dancer/tap
-brew install climate
-
-# or directly
-brew install disk0Dancer/tap/climate
-```
-
-Tap repository:
-<https://github.com/disk0Dancer/homebrew-tap>
+Or `go install github.com/disk0Dancer/climate/cmd/climate@latest`.
 
 ## Quick start
 
-Generate a CLI from an OpenAPI spec:
-
 ```bash
 climate generate --name petstore https://petstore3.swagger.io/api/v3/openapi.json
-```
-
-Use the generated CLI:
-
-```bash
-petstore pet list --output=json
-petstore pet get --pet-id 1 --output=json
-petstore pet add --data-json '{"name":"Fido","status":"available"}' --output=json
-```
-
-Inspect locally generated CLIs:
-
-```bash
-climate list
-```
-
-Publish a generated CLI to GitHub:
-
-```bash
-export GITHUB_TOKEN=github_pat_your_token
-climate publish petstore --owner disk0Dancer
+petstore pet get --pet-id 1
 ```
 
 ## Generated CLI shape
 
-```bash
-<cli-name> <tag> <operation> [flags] --output=json|table|raw
+```
+<cli> <group> <operation> [flags] --output=json|table|raw
 ```
 
-- first-level subcommand: OpenAPI tag
-- second-level subcommand: generated operation command
-- path parameters: required flags
-- query parameters: optional flags
-- request body: `--data-json` or `--data-file`
-- success and error output: structured JSON
+- Groups = OpenAPI tags
+- Operations = endpoints
+- Path/query/header params → flags
+- Body → `--data-json` / `--data-file`
+- Auth via env vars (API key, bearer, basic, OAuth2)
 
-## Agents and skills.sh
+## Demo
 
-Print the built-in climate skill:
+[disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ endpoint CLI from the GitHub REST API spec.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `generate` | Create CLI from OpenAPI spec |
+| `list` | Show registered CLIs |
+| `remove` | Delete a generated CLI |
+| `upgrade` | Regenerate from updated spec |
+| `publish` | Push CLI to GitHub with CI/release |
+| `skill generate` | Emit agent skill prompt |
+
+## Agent skills
 
 ```bash
-climate skill generator
-```
-
-Install the repo skill with skills.sh-compatible tooling:
-
-```bash
+climate skill generator                        # skill for climate itself
+climate skill generate petstore --mode=compact # skill for a generated CLI
 npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
 ```
 
-Generate a skill for a CLI you just created:
+## Machine-readable
 
-```bash
-climate skill generate petstore --mode=full
-climate skill generate petstore --mode=compact
-```
-
-Publish the generated CLI into a GitHub repository with managed lifecycle files:
-
-```bash
-climate publish petstore --owner disk0Dancer
-```
-
-Relevant files:
-
-- `skills/climate.md`
-- `skills/climate-generator/SKILL.md`
-- `docs/llms.txt`
-
-## Distribution
-
-Use these channels first:
-
-- `go install`
-- GitHub Releases
-- Homebrew via `disk0Dancer/tap`
-
-GitHub Packages are optional and not required for the current CLI distribution story.
-
-## Publish lifecycle
-
-`climate publish <cli-name>` creates or reuses a GitHub repository and bootstraps:
-
-- `README.md`
-- `.gitignore`
-- `.github/workflows/ci.yml`
-- `.github/workflows/release.yml`
-
-Authentication is read from `--github-token`, `GITHUB_TOKEN`, or `GH_TOKEN`.
-
-## Google Analytics
-
-Analytics is opt-in.
-
-Set the GA4 measurement ID in `docs/site-config.js`:
-
-```js
-window.CLIMATE_SITE_CONFIG = {
-  googleAnalyticsMeasurementId: "G-XXXXXXXXXX",
-};
-```
-
-If the value is empty, no Google Analytics script is loaded.
+- [llms.txt](./llms.txt)
+- [robots.txt](./robots.txt)
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0

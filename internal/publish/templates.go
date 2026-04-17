@@ -71,13 +71,55 @@ func writeManagedFile(path, marker, content string) (bool, error) {
 
 func readmeContent(meta ProjectMetadata) string {
 	title := meta.CLIName
-	description := fmt.Sprintf("%s is a generated CLI managed by climate.", meta.CLIName)
-	usageHeading := "## Usage"
+	description := ""
 	if meta.OpenAPI != nil {
-		title = meta.OpenAPI.Info.Title
-		if strings.TrimSpace(meta.OpenAPI.Info.Description) != "" {
-			description = meta.OpenAPI.Info.Description
+		if meta.OpenAPI.Info.Title != "" {
+			title = meta.OpenAPI.Info.Title
 		}
+		if d := strings.TrimSpace(meta.OpenAPI.Info.Description); d != "" {
+			description = d
+		}
+	}
+
+	// Count endpoints
+	endpointCount := 0
+	if meta.OpenAPI != nil {
+		for _, pi := range meta.OpenAPI.Paths {
+			endpointCount += len(pi.Operations())
+		}
+	}
+
+	stats := ""
+	if endpointCount > 0 {
+		stats = fmt.Sprintf(" · %d endpoints", endpointCount)
+	}
+
+	// Subtitle line
+	subtitle := fmt.Sprintf("Generated Go CLI for %s%s", title, stats)
+	if description != "" && description != title {
+		subtitle = fmt.Sprintf("%s%s", description, stats)
+	}
+
+	// Command groups from tags
+	var groups string
+	if meta.OpenAPI != nil && len(meta.OpenAPI.Tags) > 0 {
+		names := make([]string, 0, len(meta.OpenAPI.Tags))
+		for _, t := range meta.OpenAPI.Tags {
+			names = append(names, t.Name)
+		}
+		groups = fmt.Sprintf(`
+## Commands
+
+~~~
+%s
+~~~
+`, strings.Join(names, ", "))
+	}
+
+	// Owner
+	owner := ""
+	if parts := strings.SplitN(meta.Repository, "/", 2); len(parts) == 2 {
+		owner = parts[0]
 	}
 
 	return fmt.Sprintf(`%s
@@ -86,31 +128,37 @@ func readmeContent(meta ProjectMetadata) string {
 
 %s
 
-This repository was bootstrapped by climate from an OpenAPI specification and
-is ready for CI, tagged releases, and GitHub-hosted lifecycle management.
-
 ## Install
 
 ~~~bash
 go install github.com/%s@latest
 ~~~
 
-%s
+## Usage
 
 ~~~bash
 %s --help
-%s <tag> <operation> --output=json
+%s <group> <operation> [flags]
 ~~~
+%s
+## About
 
-## Release
-
-Push a tag like %s to trigger the release workflow:
+Built with [climate](https://github.com/disk0Dancer/climate) — any API becomes a tool.
 
 ~~~bash
-git tag v0.1.0
-git push origin v0.1.0
+brew tap disk0Dancer/tap && brew install climate
+climate generate --name %s <spec-url>
 ~~~
-`, markdownManagedMarker, title, description, meta.Repository, usageHeading, meta.CLIName, meta.CLIName, "v0.1.0")
+
+---
+
+[@%s](https://github.com/%s) · [climate](https://github.com/disk0Dancer/climate)
+`, markdownManagedMarker, meta.CLIName, subtitle,
+		meta.Repository,
+		meta.CLIName, meta.CLIName,
+		groups,
+		meta.CLIName,
+		owner, owner)
 }
 
 func gitignoreContent() string {
