@@ -3,6 +3,11 @@ name: climate-generator
 description: >
   Generate Go CLIs from OpenAPI 3.x specs with climate, inspect generated CLIs,
   and emit Markdown skill prompts so those CLIs can be attached to agent workflows.
+license: Apache-2.0
+compatibility: Requires Go 1.21+ and climate CLI (brew install disk0Dancer/tap/climate)
+metadata:
+  author: disk0Dancer
+  version: "1.0"
 ---
 
 # Skill: climate-generator
