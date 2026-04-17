@@ -732,12 +732,37 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 				sb.WriteString("\t\t\t}\n")
 			}
 
+			// Build per-request headers from header parameters
+			hasHeaderParams := false
+			for _, p := range op.Parameters {
+				if p.In == "header" {
+					hasHeaderParams = true
+					break
+				}
+			}
+			if hasHeaderParams {
+				sb.WriteString("\t\t\treqHeaders := map[string]string{}\n")
+				for _, p := range op.Parameters {
+					if p.In == "header" {
+						key := opKey + "_" + p.Name
+						varName := varMap[key]
+						sb.WriteString(fmt.Sprintf("\t\t\tif %s != \"\" {\n", varName))
+						sb.WriteString(fmt.Sprintf("\t\t\t\treqHeaders[%q] = %s\n", p.Name, varName))
+						sb.WriteString("\t\t\t}\n")
+					}
+				}
+			}
+
 			// Merge auth query params (e.g. apiKey in:query) into per-request params
 			sb.WriteString("\t\t\tfor k, v := range getAuthQueryParams() {\n")
 			sb.WriteString("\t\t\t\tqueryParams[k] = v\n")
 			sb.WriteString("\t\t\t}\n")
 			sb.WriteString("\t\t\tc := client.NewClient(getBaseURL(), getAuthHeaders())\n")
-			sb.WriteString(fmt.Sprintf("\t\t\tresp, err := c.Do(%q, path, queryParams, %s)\n", op.Method, bodyArg))
+			if hasHeaderParams {
+				sb.WriteString(fmt.Sprintf("\t\t\tresp, err := c.Do(%q, path, queryParams, %s, reqHeaders)\n", op.Method, bodyArg))
+			} else {
+				sb.WriteString(fmt.Sprintf("\t\t\tresp, err := c.Do(%q, path, queryParams, %s)\n", op.Method, bodyArg))
+			}
 			sb.WriteString("\t\t\tif err != nil {\n")
 			sb.WriteString("\t\t\t\texitWithError(0, \"CliError\", err.Error(), nil)\n")
 			sb.WriteString("\t\t\t}\n")
@@ -824,7 +849,7 @@ func NewClient(baseURL string, headers map[string]string) *Client {
 }
 
 // Do executes an HTTP request.
-func (c *Client) Do(method, path string, query map[string]string, body []byte) (*Response, error) {
+func (c *Client) Do(method, path string, query map[string]string, body []byte, extraHeaders ...map[string]string) (*Response, error) {
 	fullURL := c.BaseURL + path
 	if len(query) > 0 {
 		params := url.Values{}
@@ -848,6 +873,11 @@ func (c *Client) Do(method, path string, query map[string]string, body []byte) (
 	req.Header.Set("Accept", "application/json")
 	for k, v := range c.Headers {
 		req.Header.Set(k, v)
+	}
+	for _, eh := range extraHeaders {
+		for k, v := range eh {
+			req.Header.Set(k, v)
+		}
 	}
 
 	resp, err := c.HTTPClient.Do(req)
@@ -922,12 +952,20 @@ func toKebab(s string) string {
 	var result strings.Builder
 	for i, r := range s {
 		if unicode.IsUpper(r) {
-			if i > 0 {
-				result.WriteRune('-')
+			if i > 0 && result.Len() > 0 {
+				str := result.String()
+				if str[len(str)-1] != '-' {
+					result.WriteRune('-')
+				}
 			}
 			result.WriteRune(unicode.ToLower(r))
-		} else if r == '_' || r == ' ' {
-			result.WriteRune('-')
+		} else if r == '_' || r == ' ' || r == '-' || r == '/' {
+			if result.Len() > 0 {
+				str := result.String()
+				if str[len(str)-1] != '-' {
+					result.WriteRune('-')
+				}
+			}
 		} else {
 			result.WriteRune(r)
 		}
@@ -938,7 +976,7 @@ func toKebab(s string) string {
 // toPascal converts a string to PascalCase.
 func toPascal(s string) string {
 	parts := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '-' || r == '_' || r == ' '
+		return r == '-' || r == '_' || r == ' ' || r == '/'
 	})
 	var result strings.Builder
 	for _, p := range parts {

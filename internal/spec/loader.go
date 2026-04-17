@@ -49,6 +49,8 @@ func Parse(source string, data []byte) (*OpenAPI, error) {
 		return nil, err
 	}
 
+	resolveParameterRefs(&spec)
+
 	return &spec, nil
 }
 
@@ -79,6 +81,33 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string {
 	return "spec validation: " + e.Message
+}
+
+// resolveParameterRefs resolves $ref pointers in operation parameters
+// against components/parameters.
+func resolveParameterRefs(spec *OpenAPI) {
+	if len(spec.Components.Parameters) == 0 {
+		return
+	}
+	const prefix = "#/components/parameters/"
+	for pathKey, pi := range spec.Paths {
+		for method, op := range pi.Operations() {
+			_ = method
+			for i, p := range op.Parameters {
+				if p.Ref == "" {
+					continue
+				}
+				if !strings.HasPrefix(p.Ref, prefix) {
+					continue
+				}
+				name := strings.TrimPrefix(p.Ref, prefix)
+				if resolved, ok := spec.Components.Parameters[name]; ok {
+					op.Parameters[i] = resolved
+				}
+			}
+		}
+		_ = pathKey
+	}
 }
 
 // isURL reports whether s looks like an HTTP(S) URL.

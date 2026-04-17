@@ -84,6 +84,7 @@ type Operation struct {
 
 // Parameter represents an OpenAPI parameter.
 type Parameter struct {
+	Ref         string  `json:"$ref"        yaml:"$ref"`
 	Name        string  `json:"name"        yaml:"name"`
 	In          string  `json:"in"          yaml:"in"`
 	Description string  `json:"description" yaml:"description"`
@@ -124,6 +125,7 @@ type Response struct {
 type Components struct {
 	SecuritySchemes map[string]SecurityScheme `json:"securitySchemes" yaml:"securitySchemes"`
 	Schemas         map[string]*Schema        `json:"schemas"         yaml:"schemas"`
+	Parameters      map[string]Parameter      `json:"parameters"      yaml:"parameters"`
 }
 
 // SecurityScheme represents an OpenAPI security scheme.

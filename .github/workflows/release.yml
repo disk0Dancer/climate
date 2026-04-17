@@ -36,7 +36,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version-file: go.mod
 
       - name: Set version from tag
         id: version
@@ -81,38 +81,47 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     steps:
-      - name: Check required secret
+      - name: Check secret availability
+        id: tap-secret
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
-            echo "::error::Set the HOMEBREW_TAP_TOKEN repository secret to enable Homebrew tap updates."
-            exit 1
+            echo "::warning::HOMEBREW_TAP_TOKEN is not configured; skipping Homebrew tap sync for this release."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
+        if: steps.tap-secret.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Set version from tag
+        if: steps.tap-secret.outputs.configured == 'true'
         id: version
         run: |
           echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "source_url=https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Download tagged source archive
+        if: steps.tap-secret.outputs.configured == 'true'
         run: curl -fsSL -o climate-source.tar.gz "${{ steps.version.outputs.source_url }}"
 
       - name: Compute source SHA256
+        if: steps.tap-secret.outputs.configured == 'true'
         id: source
         run: echo "sha256=$(sha256sum climate-source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Clone Homebrew tap
+        if: steps.tap-secret.outputs.configured == 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" "${RUNNER_TEMP}/homebrew-tap"
 
       - name: Render formula
+        if: steps.tap-secret.outputs.configured == 'true'
         run: |
           mkdir -p "${RUNNER_TEMP}/homebrew-tap/Formula"
           bash scripts/render_homebrew_formula.sh \
@@ -121,6 +130,7 @@ jobs:
             > "${RUNNER_TEMP}/homebrew-tap/Formula/climate.rb"
 
       - name: Commit and push tap update
+        if: steps.tap-secret.outputs.configured == 'true'
         working-directory: ${{ runner.temp }}/homebrew-tap
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
