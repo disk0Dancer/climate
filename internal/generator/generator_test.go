@@ -3,6 +3,7 @@ package generator_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/disk0Dancer/climate/internal/generator"
@@ -201,5 +202,33 @@ func TestGenerateWithAuthSchemes(t *testing.T) {
 	// Should contain bearer token or api key flags
 	if len(rootGoContent) == 0 {
 		t.Error("root.go should not be empty")
+	}
+}
+
+func TestGenerateRootVersionIsBuildOverridable(t *testing.T) {
+	outDir := t.TempDir()
+	openAPI := sampleOpenAPI()
+	rawSpec := []byte(`{}`)
+
+	_, err := generator.Generate(openAPI, rawSpec, generator.Options{
+		CLIName: "petstore",
+		OutDir:  outDir,
+		NoBuild: true,
+		Force:   true,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, "cmd", "root.go"))
+	if err != nil {
+		t.Fatalf("reading root.go: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `var version = "1.0.0"`) {
+		t.Fatal("root.go should declare a build-overridable version variable")
+	}
+	if !strings.Contains(content, "Version: version") {
+		t.Fatal("root.go should wire cobra version through the version variable")
 	}
 }

@@ -3,281 +3,764 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>climate — OpenAPI → production-ready CLI on Go</title>
+  <title>climate docs | OpenAPI to Go CLI generator</title>
+  <meta
+    name="description"
+    content="Human-first documentation for climate, a Go CLI that turns OpenAPI 3.x specs into auth-aware command-line tools and agent-ready skills."
+  />
+  <meta name="theme-color" content="#f4efe4" />
+  <link rel="canonical" href="https://disk0dancer.github.io/climate/" />
+  <link rel="alternate" type="text/markdown" href="./index.md" title="Markdown documentation" />
+  <link rel="alternate" type="text/plain" href="./llms.txt" title="LLM index" />
+  <link rel="icon" href="data:," />
+  <script src="./site-config.js"></script>
+  <script>
+    (function initAnalytics() {
+      var config = window.CLIMATE_SITE_CONFIG || {};
+      var measurementId = config.googleAnalyticsMeasurementId || "";
+      if (!/^G-[A-Z0-9]+$/i.test(measurementId)) {
+        return;
+      }
+
+      var script = document.createElement("script");
+      script.async = true;
+      script.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(measurementId);
+      document.head.appendChild(script);
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function gtag() {
+        window.dataLayer.push(arguments);
+      };
+      window.gtag("js", new Date());
+      window.gtag("config", measurementId);
+    })();
+  </script>
   <style>
     :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --border: #30363d;
-      --accent: #58a6ff;
-      --accent2: #3fb950;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --code-bg: #1f2937;
+      --bg: #f4efe4;
+      --paper: #fffaf0;
+      --paper-strong: #fffdf7;
+      --ink: #1f1f19;
+      --muted: #5f5c52;
+      --line: #d9cfba;
+      --accent: #0a7a5a;
+      --accent-strong: #075640;
+      --accent-soft: #dff2ea;
+      --warning-bg: #fff0cf;
+      --warning-line: #d8b25c;
+      --shadow: 0 18px 50px rgba(45, 34, 14, 0.08);
+      --radius: 18px;
+      --content-width: 1160px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
 
-    /* ── Layout ── */
-    header, section, footer { max-width: 900px; margin: 0 auto; padding: 0 1.5rem; }
-    header { padding-top: 5rem; padding-bottom: 4rem; text-align: center; }
+    * {
+      box-sizing: border-box;
+    }
 
-    /* ── Hero ── */
-    .hero-eyebrow { font-size: .85rem; color: var(--accent2); text-transform: uppercase; letter-spacing: .1em; margin-bottom: .75rem; }
-    h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; line-height: 1.15; }
-    h1 span { color: var(--accent); }
-    .hero-sub { margin-top: 1rem; font-size: 1.15rem; color: var(--muted); max-width: 600px; margin-left: auto; margin-right: auto; }
-    .hero-buttons { margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-    .btn { display: inline-block; padding: .6rem 1.4rem; border-radius: 6px; font-weight: 600; font-size: .95rem; transition: opacity .15s; }
-    .btn-primary { background: var(--accent); color: #0d1117; }
-    .btn-outline { border: 1px solid var(--border); color: var(--text); }
-    .btn:hover { opacity: .85; text-decoration: none; }
+    html {
+      scroll-behavior: smooth;
+    }
 
-    /* ── Sections ── */
-    section { padding-top: 3.5rem; padding-bottom: 3.5rem; border-top: 1px solid var(--border); }
-    h2 { font-size: 1.6rem; margin-bottom: 1.25rem; }
-    h3 { font-size: 1.1rem; margin-bottom: .5rem; color: var(--accent); }
-    p { margin-bottom: 1rem; color: #ccd6f6; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(10, 122, 90, 0.12), transparent 32%),
+        radial-gradient(circle at top right, rgba(168, 106, 34, 0.12), transparent 28%),
+        linear-gradient(180deg, #efe8d8 0%, var(--bg) 38%, #f7f2e7 100%);
+      font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.65;
+    }
 
-    /* ── Features grid ── */
-    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }
-    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
-    .feature-icon { font-size: 1.5rem; margin-bottom: .5rem; }
+    a {
+      color: var(--accent-strong);
+    }
 
-    /* ── Code blocks ── */
-    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; margin: .75rem 0; }
-    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: .88rem; color: #e2e8f0; }
-    pre code { background: none; }
-    :not(pre) > code { background: var(--code-bg); padding: .15em .4em; border-radius: 4px; font-size: .85em; }
+    a:hover {
+      color: var(--accent);
+    }
 
-    /* ── Install tabs ── */
-    .tabs { display: flex; gap: .5rem; margin-bottom: -.5rem; }
-    .tab { padding: .4rem .9rem; border-radius: 6px 6px 0 0; cursor: pointer; font-size: .9rem; background: var(--surface); border: 1px solid var(--border); border-bottom: none; color: var(--muted); }
-    .tab.active { background: var(--code-bg); color: var(--text); border-color: var(--border); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    code,
+    pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    }
 
-    /* ── Table ── */
-    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
-    th, td { text-align: left; padding: .55rem .75rem; border: 1px solid var(--border); }
-    th { background: var(--surface); color: var(--muted); font-weight: 600; }
+    code {
+      font-size: 0.92em;
+    }
 
-    /* ── Footer ── */
-    footer { text-align: center; padding-top: 2.5rem; padding-bottom: 2.5rem; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--border); }
-    footer a { color: var(--muted); }
-    footer a:hover { color: var(--text); }
+    .shell {
+      background: #1a1d1b;
+      color: #f8f8f0;
+      border: 1px solid #101311;
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .shell code {
+      color: inherit;
+      background: none;
+      padding: 0;
+    }
+
+    .inline-code {
+      background: rgba(10, 122, 90, 0.08);
+      padding: 0.15rem 0.35rem;
+      border-radius: 6px;
+    }
+
+    .site {
+      width: min(calc(100% - 2rem), var(--content-width));
+      margin: 0 auto;
+      padding-bottom: 4rem;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(14px);
+      background: rgba(244, 239, 228, 0.9);
+      border-bottom: 1px solid rgba(217, 207, 186, 0.8);
+    }
+
+    .topbar-inner {
+      width: min(calc(100% - 2rem), var(--content-width));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.9rem 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.7rem;
+      color: inherit;
+      text-decoration: none;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-mark {
+      width: 1.95rem;
+      height: 1.95rem;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(135deg, var(--accent) 0%, #0b4d39 100%);
+      box-shadow: 0 10px 25px rgba(10, 122, 90, 0.24);
+    }
+
+    .topnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      align-items: center;
+      justify-content: flex-end;
+      font-size: 0.95rem;
+    }
+
+    .topnav a {
+      text-decoration: none;
+      color: var(--muted);
+    }
+
+    .topnav a:hover {
+      color: var(--ink);
+    }
+
+    .hero {
+      padding: 4rem 0 2.5rem;
+      display: grid;
+      gap: 1.75rem;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      width: fit-content;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(10, 122, 90, 0.08);
+      color: var(--accent-strong);
+      font-size: 0.88rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .hero h1,
+    .section h2,
+    .section h3 {
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      letter-spacing: -0.02em;
+    }
+
+    .hero h1 {
+      margin: 0;
+      max-width: 13ch;
+      font-size: clamp(2.7rem, 7vw, 5rem);
+      line-height: 0.98;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .hero-card,
+    .section,
+    .mini-card,
+    .toc {
+      background: rgba(255, 250, 240, 0.84);
+      border: 1px solid rgba(217, 207, 186, 0.9);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-card {
+      padding: 1.35rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      margin-top: 1.35rem;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      border-radius: 999px;
+      padding: 0.78rem 1.1rem;
+      text-decoration: none;
+      font-weight: 700;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(10, 122, 90, 0.15);
+    }
+
+    .button-primary {
+      color: white;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    }
+
+    .button-secondary {
+      color: var(--ink);
+      background: var(--paper-strong);
+      border: 1px solid var(--line);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 1.15rem;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.42rem 0.72rem;
+      border-radius: 999px;
+      border: 1px solid rgba(217, 207, 186, 0.95);
+      background: rgba(255, 255, 255, 0.68);
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .docs-grid {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 1.4rem;
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 5.2rem;
+      padding: 1.2rem 1.1rem;
+    }
+
+    .toc h2 {
+      margin: 0 0 0.9rem;
+      font-size: 1rem;
+      font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .toc ol {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+
+    .toc li + li {
+      margin-top: 0.55rem;
+    }
+
+    .toc a {
+      text-decoration: none;
+    }
+
+    .sections {
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    .section {
+      padding: 1.5rem;
+    }
+
+    .section h2 {
+      margin: 0 0 0.8rem;
+      font-size: 2rem;
+    }
+
+    .section h3 {
+      margin: 1.2rem 0 0.55rem;
+      font-size: 1.3rem;
+    }
+
+    .section p,
+    .section li {
+      color: var(--muted);
+    }
+
+    .section p:first-of-type {
+      font-size: 1.03rem;
+    }
+
+    .callout {
+      padding: 1rem 1.1rem;
+      border-left: 4px solid var(--warning-line);
+      border-radius: 14px;
+      background: var(--warning-bg);
+      color: #5d4610;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .mini-card {
+      padding: 1rem;
+    }
+
+    .mini-card h3 {
+      margin-top: 0;
+      font-size: 1.05rem;
+      font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .mini-card p {
+      margin-bottom: 0;
+      font-size: 0.97rem;
+    }
+
+    .command-list,
+    .faq-list {
+      display: grid;
+      gap: 0.95rem;
+    }
+
+    .command-item,
+    .faq-item {
+      padding: 1rem 1rem 0.95rem;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--paper-strong);
+    }
+
+    .command-item h3,
+    .faq-item h3 {
+      margin: 0 0 0.45rem;
+      font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
+      font-size: 1rem;
+    }
+
+    .footer {
+      margin-top: 1.6rem;
+      padding: 1.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      text-align: center;
+    }
+
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 420ms ease, transform 420ms ease;
+    }
+
+    [data-reveal].is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 960px) {
+      .hero-grid,
+      .docs-grid,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hero {
+        padding-top: 2.8rem;
+      }
+
+      .hero-card,
+      .section,
+      .toc {
+        padding: 1.15rem;
+      }
+
+      .hero h1 {
+        max-width: none;
+      }
+    }
   </style>
 </head>
 <body>
-
-<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
-<header>
-  <p class="hero-eyebrow">Open Source · Go · LLM-ready</p>
-  <h1><span>climate</span> — OpenAPI → production-ready CLI on Go</h1>
-  <p class="hero-sub">
-    Generate typed, auth-aware Go CLIs from any OpenAPI 3.x spec in seconds.
-    Built for humans <em>and</em> AI agents.
-  </p>
-  <div class="hero-buttons">
-    <a class="btn btn-primary" href="#quickstart">Quick Start</a>
-    <a class="btn btn-outline" href="https://github.com/disk0Dancer/climate">GitHub</a>
-  </div>
-</header>
-
-<!-- ── Features ───────────────────────────────────────────────────────────── -->
-<section id="features">
-  <h2>Why climate?</h2>
-  <div class="features">
-    <div class="feature">
-      <div class="feature-icon">⚡</div>
-      <h3>Single binary</h3>
-      <p>One <code>climate</code> binary turns any OpenAPI spec into a compiled Go CLI — no templates to edit.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🔐</div>
-      <h3>Auth built-in</h3>
-      <p>API key (header/query/cookie), HTTP bearer &amp; basic, OAuth2 client credentials — all wired automatically.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🤖</div>
-      <h3>LLM-agent ready</h3>
-      <p>JSON output everywhere. <code>climate skill generate</code> emits a plain-text prompt so agents can self-register any CLI as a skill.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🏗️</div>
-      <h3>Strongly typed</h3>
-      <p>Generated code uses Go + cobra; path/query params become typed flags with validation.</p>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark">c</span>
+        <span>climate docs</span>
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="#install">Install</a>
+        <a href="#quickstart">Quick start</a>
+        <a href="#skills">Skills</a>
+        <a href="#distribution">Distribution</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/disk0Dancer/climate">GitHub</a>
+      </nav>
     </div>
   </div>
-</section>
 
-<!-- ── Installation ───────────────────────────────────────────────────────── -->
-<section id="install">
-  <h2>Installation</h2>
+  <main class="site" id="top">
+    <section class="hero">
+      <span class="eyebrow">Human-first docs for a generated-CLI toolchain</span>
+      <div class="hero-grid">
+        <div class="hero-card" data-reveal>
+          <h1>Turn OpenAPI into a real Go CLI, then hand it to humans and agents.</h1>
+          <p>
+            climate reads an OpenAPI 3.x spec, generates an auth-aware Go command-line client,
+            and can emit a plain Markdown skill so the resulting CLI becomes usable in agent workflows.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#quickstart">Start with the quick start</a>
+            <a class="button button-secondary" href="./index.md">Read the Markdown docs</a>
+          </div>
+          <div class="chips" aria-label="Highlights">
+            <span class="chip">OpenAPI 3.0 / 3.1</span>
+            <span class="chip">Go + Cobra</span>
+            <span class="chip">Structured JSON output</span>
+            <span class="chip">skills.sh compatible</span>
+            <span class="chip">GitHub Pages docs</span>
+          </div>
+        </div>
+        <div class="hero-card" data-reveal>
+          <h2 style="margin-top:0">Read this first</h2>
+          <div class="grid-2">
+            <div class="mini-card">
+              <h3>Best install today</h3>
+              <p>Use Homebrew via <span class="inline-code">disk0Dancer/tap</span>, or fall back to <span class="inline-code">go install</span>.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Homebrew status</h3>
+              <p>Use <span class="inline-code">brew tap disk0Dancer/tap</span> and then <span class="inline-code">brew install climate</span>.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Google Analytics</h3>
+              <p>Set a GA4 measurement ID in <span class="inline-code">docs/site-config.js</span> to enable tracking.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Machine-readable docs</h3>
+              <p>See <a href="./llms.txt">llms.txt</a>, <a href="./index.md">index.md</a>, and <a href="./robots.txt">robots.txt</a>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('go', event)">Go</div>
-    <div class="tab" onclick="switchTab('brew', event)">Homebrew</div>
-    <div class="tab" onclick="switchTab('release', event)">GitHub Release</div>
-  </div>
+    <div class="docs-grid">
+      <aside class="toc" data-reveal>
+        <h2>On this page</h2>
+        <ol>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#quickstart">Quick start</a></li>
+          <li><a href="#shape">Generated CLI shape</a></li>
+          <li><a href="#skills">Agents and skills.sh</a></li>
+          <li><a href="#reference">Command reference</a></li>
+          <li><a href="#distribution">Distribution</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#ops">Ops notes</a></li>
+        </ol>
+      </aside>
 
-  <div id="tab-go" class="tab-content active">
-    <pre><code>go install github.com/disk0Dancer/climate/cmd/climate@latest</code></pre>
-    <p>Requires Go 1.21+. The binary will be placed in <code>$(go env GOPATH)/bin</code>.</p>
-  </div>
+      <div class="sections">
+        <section class="section" id="install" data-reveal>
+          <h2>Install</h2>
+          <p>climate is installable through Go, GitHub Releases, and a published Homebrew tap.</p>
 
-  <div id="tab-brew" class="tab-content">
-    <pre><code>brew tap disk0dancer/tap
+          <h3>Go</h3>
+          <pre class="shell"><code>go install github.com/disk0Dancer/climate/cmd/climate@latest</code></pre>
+
+          <h3>GitHub Releases</h3>
+          <pre class="shell"><code>curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate-darwin-arm64.tar.gz | tar xz
+sudo mv climate-darwin-arm64 /usr/local/bin/climate</code></pre>
+
+          <h3>Homebrew</h3>
+          <pre class="shell"><code>brew tap disk0Dancer/tap
 brew install climate</code></pre>
-  </div>
 
-  <div id="tab-release" class="tab-content">
-    <pre><code># Linux (amd64)
-curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate_linux_amd64.tar.gz | tar xz
-sudo mv climate /usr/local/bin/
+          <div class="callout">
+            <strong>Homebrew:</strong> climate lives in the published tap <span class="inline-code">disk0Dancer/tap</span>. If you want the fully qualified form, use <span class="inline-code">brew install disk0Dancer/tap/climate</span>.
+          </div>
+        </section>
 
-# macOS (arm64 / Apple Silicon)
-curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate_darwin_arm64.tar.gz | tar xz
-sudo mv climate /usr/local/bin/</code></pre>
-    <p>Pre-built binaries for Linux, macOS, and Windows (amd64/arm64) are available on the
-    <a href="https://github.com/disk0Dancer/climate/releases">Releases page</a>.</p>
-  </div>
-</section>
+        <section class="section" id="quickstart" data-reveal>
+          <h2>Quick start</h2>
+          <p>Generate a CLI from a remote OpenAPI spec, then use the generated binary as a normal command-line tool.</p>
 
-<!-- ── Quick Start ────────────────────────────────────────────────────────── -->
-<section id="quickstart">
-  <h2>Quick Start</h2>
+          <h3>1. Generate a CLI</h3>
+          <pre class="shell"><code>climate generate --name petstore https://petstore3.swagger.io/api/v3/openapi.json</code></pre>
 
-  <h3>1. Generate a CLI from an OpenAPI spec</h3>
-  <pre><code>climate generate --name petstore https://petstore3.swagger.io/api/v3/openapi.json</code></pre>
+          <h3>2. Use it</h3>
+          <pre class="shell"><code>petstore pet list --output=json
+petstore pet get --pet-id 1 --output=json
+petstore pet add --data-json '{"name":"Fido","status":"available"}' --output=json</code></pre>
 
-  <h3>2. Use the generated CLI</h3>
-  <pre><code># List pets
-petstore pet list --output=json
+          <h3>3. Authenticate</h3>
+          <pre class="shell"><code>export PETSTORE_TOKEN=my-access-token
+petstore pet list --output=json</code></pre>
 
-# Get a pet by ID
-petstore pet get --pet-id 1
+          <h3>4. Inspect what climate registered locally</h3>
+          <pre class="shell"><code>climate list</code></pre>
 
-# Create a pet (with JSON body)
-petstore pet add --data-json '{"name":"Fido","status":"available"}'</code></pre>
+          <h3>5. Publish the generated CLI to GitHub</h3>
+          <pre class="shell"><code>export GITHUB_TOKEN=github_pat_your_token
+climate publish petstore --owner disk0Dancer</code></pre>
+        </section>
 
-  <h3>3. Authenticate</h3>
-  <pre><code># API key via environment variable
-export PETSTORE_APIKEY_API_KEY=my-secret-key
-petstore pet list
+        <section class="section" id="shape" data-reveal>
+          <h2>Generated CLI shape</h2>
+          <p>Every generated CLI follows the same mental model so people do not need to relearn the interface for each API.</p>
 
-# Bearer token
-export PETSTORE_TOKEN=my-bearer-token
-petstore pet list</code></pre>
+          <pre class="shell"><code>&lt;cli-name&gt; &lt;tag&gt; &lt;operation&gt; [flags] --output=json|table|raw</code></pre>
 
-  <h3>4. List all generated CLIs</h3>
-  <pre><code>climate list</code></pre>
-</section>
+          <div class="grid-2">
+            <div class="mini-card">
+              <h3>Subcommands</h3>
+              <p>The first level is the OpenAPI tag. The second level is the generated operation command.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Parameters</h3>
+              <p>Path parameters become required flags. Query parameters become optional flags.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Request bodies</h3>
+              <p>JSON bodies are passed via <span class="inline-code">--data-json</span> or <span class="inline-code">--data-file</span>.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Errors</h3>
+              <p>Both CLI failures and API failures are emitted as structured JSON errors.</p>
+            </div>
+          </div>
+        </section>
 
-<!-- ── CLI Reference ──────────────────────────────────────────────────────── -->
-<section id="commands">
-  <h2>climate Commands</h2>
+        <section class="section" id="skills" data-reveal>
+          <h2>Agents and skills.sh</h2>
+          <p>The docs site is written for humans first, but the repo also exposes machine-friendly skill assets so the climate toolchain is easy to attach to an agent.</p>
 
-  <table>
-    <thead>
-      <tr><th>Command</th><th>Description</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>climate generate &lt;spec&gt;</code></td><td>Generate &amp; build a CLI from an OpenAPI spec (URL or file).</td></tr>
-      <tr><td><code>climate list</code></td><td>List all generated CLIs registered in the local manifest.</td></tr>
-      <tr><td><code>climate remove &lt;name&gt;</code></td><td>Remove a generated CLI (add <code>--purge-sources</code> to also delete source).</td></tr>
-      <tr><td><code>climate upgrade &lt;name&gt;</code></td><td>Re-generate a CLI from an updated spec.</td></tr>
-      <tr><td><code>climate skill generate &lt;name&gt;</code></td><td>Print a Markdown skill prompt for an LLM agent to self-register the CLI.</td></tr>
-      <tr><td><code>climate skill generator</code></td><td>Print the <code>climate.generator</code> skill file (for registering climate itself with an agent).</td></tr>
-    </tbody>
-  </table>
+          <h3>Get the built-in climate skill</h3>
+          <pre class="shell"><code>climate skill generator</code></pre>
 
-  <h3 style="margin-top:1.5rem">Flags for <code>generate</code></h3>
-  <table>
-    <thead>
-      <tr><th>Flag</th><th>Description</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>--name</code></td><td>Override the generated binary name.</td></tr>
-      <tr><td><code>--out-dir</code></td><td>Directory to write generated Go source code.</td></tr>
-      <tr><td><code>--no-build</code></td><td>Generate source only; skip <code>go build</code>.</td></tr>
-      <tr><td><code>--force</code></td><td>Overwrite an existing output directory.</td></tr>
-    </tbody>
-  </table>
-</section>
+          <h3>Install the repo skill via skills.sh-compatible tooling</h3>
+          <pre class="shell"><code>npx skills add https://github.com/disk0Dancer/climate --skill climate-generator</code></pre>
 
-<!-- ── Auth Reference ─────────────────────────────────────────────────────── -->
-<section id="auth">
-  <h2>Authentication</h2>
-  <p>
-    climate reads <code>components.securitySchemes</code> from the spec and generates auth
-    handling for every scheme it finds. Credentials are resolved in priority order:
-    <strong>CLI flag → ENV variable</strong>.
-  </p>
+          <h3>Generate a skill for a newly created CLI</h3>
+          <pre class="shell"><code>climate skill generate petstore --mode=full
+climate skill generate petstore --mode=compact</code></pre>
 
-  <table>
-    <thead>
-      <tr><th>Scheme</th><th>ENV variable</th><th>CLI flag</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>API key (header/query/cookie)</td><td><code>&lt;CLI&gt;_&lt;SCHEME&gt;_API_KEY</code></td><td><code>--&lt;scheme&gt;-key</code></td></tr>
-      <tr><td>HTTP Bearer</td><td><code>&lt;CLI&gt;_TOKEN</code></td><td><code>--token</code></td></tr>
-      <tr><td>HTTP Basic</td><td><code>&lt;CLI&gt;_USERNAME</code> / <code>&lt;CLI&gt;_PASSWORD</code></td><td><code>--username --password</code></td></tr>
-      <tr><td>OAuth2 client_credentials</td><td><code>&lt;CLI&gt;_CLIENT_ID</code> / <code>&lt;CLI&gt;_CLIENT_SECRET</code></td><td><code>--client-id --client-secret</code></td></tr>
-    </tbody>
-  </table>
-</section>
+          <h3>Publish a generated CLI with lifecycle bootstrap</h3>
+          <pre class="shell"><code>climate publish petstore --owner disk0Dancer</code></pre>
 
-<!-- ── Agent integration ──────────────────────────────────────────────────── -->
-<section id="agents">
-  <h2>LLM Agent Integration (skills.sh)</h2>
-  <p>
-    climate ships with a ready-to-use <strong>Markdown skill file</strong>
-    (<code>skills/climate.md</code>) that lets AI agents like Claude Code register
-    climate as a tool and generate CLIs for any API on demand.
-  </p>
+          <p>
+            The repo ships the embedded skill at
+            <a href="https://raw.githubusercontent.com/disk0Dancer/climate/main/skills/climate.md">skills/climate.md</a>
+            and a skills.sh-friendly version at
+            <a href="https://raw.githubusercontent.com/disk0Dancer/climate/main/skills/climate-generator/SKILL.md">skills/climate-generator/SKILL.md</a>.
+          </p>
+        </section>
 
-  <h3>Register climate with your agent</h3>
-  <pre><code># Print the climate.generator skill prompt
-climate skill generator</code></pre>
+        <section class="section" id="reference" data-reveal>
+          <h2>Command reference</h2>
+          <div class="command-list">
+            <article class="command-item">
+              <h3><code>climate generate [flags] &lt;spec&gt;</code></h3>
+              <p>Generate and optionally build a CLI from an OpenAPI URL or local file.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate list</code></h3>
+              <p>List generated CLIs recorded in <span class="inline-code">~/.climate/manifest.json</span>.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate remove &lt;name&gt;</code></h3>
+              <p>Remove a CLI binary and manifest entry. Use <span class="inline-code">--purge-sources</span> to delete generated source as well.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate upgrade &lt;name&gt;</code></h3>
+              <p>Regenerate and rebuild a previously generated CLI from the recorded spec or a new spec passed via <span class="inline-code">--openapi</span>.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate publish &lt;name&gt;</code></h3>
+              <p>Create or reuse a GitHub repository for a generated CLI, bootstrap lifecycle files, initialize git, and push the source tree.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate skill generate &lt;name&gt;</code></h3>
+              <p>Emit a Markdown skill prompt for a generated CLI so an agent can self-register it.</p>
+            </article>
+            <article class="command-item">
+              <h3><code>climate skill generator</code></h3>
+              <p>Print the built-in climate skill file itself.</p>
+            </article>
+          </div>
+        </section>
 
-  <h3>Agent workflow (automatic)</h3>
-  <pre><code># Step 1 — agent generates a CLI
-climate generate https://api.example.com/openapi.yaml
+        <section class="section" id="distribution" data-reveal>
+          <h2>Distribution</h2>
+          <p>For a CLI like climate, GitHub Releases, <span class="inline-code">go install</span>, and a Homebrew tap are enough. GitHub Packages are optional, not required.</p>
 
-# Step 2 — agent gets a skill prompt for the new CLI
-climate skill generate myapi
+          <div class="grid-2">
+            <div class="mini-card">
+              <h3>Use now</h3>
+              <p>Homebrew, Go install, and GitHub Releases are all live install paths today.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Release sync</h3>
+              <p>Tagged releases now sync <span class="inline-code">Formula/climate.rb</span> into <span class="inline-code">disk0Dancer/homebrew-tap</span> when <span class="inline-code">HOMEBREW_TAP_TOKEN</span> is configured.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Generated CLI lifecycle</h3>
+              <p><span class="inline-code">climate publish</span> bootstraps README, CI, and release workflow files for generated CLIs before pushing them to GitHub.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Do you need GitHub Packages?</h3>
+              <p>No, not for the current product shape. Add GitHub Packages only if you want bottles or OCI-style distribution there.</p>
+            </div>
+            <div class="mini-card">
+              <h3>Current release naming</h3>
+              <p>Release archives are named with hyphens, for example <span class="inline-code">climate-darwin-arm64.tar.gz</span>.</p>
+            </div>
+          </div>
+        </section>
 
-# Step 3 — agent follows the self-registration instructions in the prompt
-# and uses the myapi CLI for all subsequent tasks</code></pre>
+        <section class="section" id="faq" data-reveal>
+          <h2>FAQ</h2>
+          <div class="faq-list">
+            <article class="faq-item">
+              <h3>Why does <code>brew install climate</code> fail?</h3>
+              <p>It should work after <span class="inline-code">brew tap disk0Dancer/tap</span>. If it still fails, run <span class="inline-code">brew update</span> and then use the fully qualified name <span class="inline-code">brew install disk0Dancer/tap/climate</span>.</p>
+            </article>
+            <article class="faq-item">
+              <h3>Should the docs site be human-first or agent-first?</h3>
+              <p>Human-first. The HTML landing is documentation. Machine-friendly companions live beside it as <span class="inline-code">index.md</span> and <span class="inline-code">llms.txt</span>.</p>
+            </article>
+            <article class="faq-item">
+              <h3>How do I enable Google Analytics?</h3>
+              <p>Create a GA4 web data stream, copy the measurement ID that starts with <span class="inline-code">G-</span>, and set it in <span class="inline-code">docs/site-config.js</span>. If the ID is empty, the site makes no Google Analytics request.</p>
+            </article>
+          </div>
+        </section>
 
-  <p>
-    All commands output structured JSON, making them trivially parseable by any agent.
-    Error objects always include <code>error.code</code> and <code>error.message</code>.
-  </p>
-</section>
+        <section class="section" id="ops" data-reveal>
+          <h2>Ops notes</h2>
+          <p>The repository already has GitHub Pages configured in workflow mode. The site is published from the <span class="inline-code">docs/</span> directory.</p>
+          <ul>
+            <li><a href="./index.md">index.md</a> is the Markdown companion for people and LLMs.</li>
+            <li><a href="./llms.txt">llms.txt</a> is the short machine-readable entrypoint.</li>
+            <li><a href="./robots.txt">robots.txt</a> keeps crawler policy explicit.</li>
+            <li><span class="inline-code">docs/site-config.js</span> is where Google Analytics can be turned on safely.</li>
+            <li><span class="inline-code">release.yml</span> syncs the Homebrew tap after tagged releases when <span class="inline-code">HOMEBREW_TAP_TOKEN</span> is set.</li>
+            <li><span class="inline-code">climate publish</span> uses the GitHub API plus local git to create and manage generated CLI repositories.</li>
+          </ul>
+        </section>
+      </div>
+    </div>
 
-<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
-<footer>
-  <p>
-    <a href="https://github.com/disk0Dancer/climate">GitHub</a> ·
-    <a href="https://github.com/disk0Dancer/climate/issues">Issues</a> ·
-    <a href="https://github.com/disk0Dancer/climate/releases">Releases</a> ·
-    <a href="https://github.com/disk0Dancer/climate/blob/main/LICENSE">License</a>
-  </p>
-  <p style="margin-top:.5rem">© 2026 disk0Dancer — MIT License</p>
-</footer>
+    <footer class="footer">
+      <p>
+        <a href="https://github.com/disk0Dancer/climate">GitHub</a> |
+        <a href="https://github.com/disk0Dancer/climate/releases">Releases</a> |
+        <a href="https://github.com/disk0Dancer/climate/blob/main/README.md">README</a> |
+        <a href="https://github.com/disk0Dancer/climate/blob/main/LICENSE">Apache-2.0 license</a>
+      </p>
+    </footer>
+  </main>
 
-<script>
-  function switchTab(id, event) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('tab-' + id).classList.add('active');
-    event.target.classList.add('active');
-  }
-</script>
+  <script>
+    (function initReveal() {
+      var elements = document.querySelectorAll("[data-reveal]");
+      if (!("IntersectionObserver" in window)) {
+        elements.forEach(function (element) {
+          element.classList.add("is-visible");
+        });
+        return;
+      }
 
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.14 });
+
+      elements.forEach(function (element) {
+        observer.observe(element);
+      });
+    })();
+  </script>
 </body>
 </html>

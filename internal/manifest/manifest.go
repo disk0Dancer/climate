@@ -14,14 +14,20 @@ const manifestVersion = 1
 
 // CLIEntry represents a single registered CLI in the manifest.
 type CLIEntry struct {
-	Name        string    `json:"name"`
-	BinaryPath  string    `json:"binary_path"`
-	SourceDir   string    `json:"source_dir"`
-	Version     string    `json:"version"`
-	OpenAPIHash string    `json:"openapi_hash"`
-	OpenAPISpec string    `json:"openapi_spec"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Name                    string    `json:"name"`
+	BinaryPath              string    `json:"binary_path"`
+	SourceDir               string    `json:"source_dir"`
+	Version                 string    `json:"version"`
+	OpenAPIHash             string    `json:"openapi_hash"`
+	OpenAPISpec             string    `json:"openapi_spec"`
+	RepositoryURL           string    `json:"repository_url,omitempty"`
+	RepositoryFullName      string    `json:"repository_full_name,omitempty"`
+	RepositorySSHURL        string    `json:"repository_ssh_url,omitempty"`
+	RepositoryDefaultBranch string    `json:"repository_default_branch,omitempty"`
+	PublishedAt             time.Time `json:"published_at,omitempty"`
+	LifecycleManaged        bool      `json:"lifecycle_managed,omitempty"`
+	CreatedAt               time.Time `json:"created_at"`
+	UpdatedAt               time.Time `json:"updated_at"`
 }
 
 // Manifest is the top-level manifest structure.
@@ -86,6 +92,22 @@ func (m *Manifest) Save() error {
 func (m *Manifest) Upsert(entry CLIEntry) {
 	for i, e := range m.CLIs {
 		if e.Name == entry.Name {
+			if entry.RepositoryURL == "" {
+				entry.RepositoryURL = e.RepositoryURL
+			}
+			if entry.RepositoryFullName == "" {
+				entry.RepositoryFullName = e.RepositoryFullName
+			}
+			if entry.RepositorySSHURL == "" {
+				entry.RepositorySSHURL = e.RepositorySSHURL
+			}
+			if entry.RepositoryDefaultBranch == "" {
+				entry.RepositoryDefaultBranch = e.RepositoryDefaultBranch
+			}
+			if entry.PublishedAt.IsZero() {
+				entry.PublishedAt = e.PublishedAt
+			}
+			entry.LifecycleManaged = entry.LifecycleManaged || e.LifecycleManaged
 			entry.CreatedAt = e.CreatedAt
 			if entry.CreatedAt.IsZero() {
 				entry.CreatedAt = time.Now()

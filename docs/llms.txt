@@ -1,0 +1,42 @@
+# climate
+
+> Human-first documentation and machine-readable index for climate, a Go CLI that generates auth-aware command-line clients from OpenAPI 3.x specs.
+
+Canonical: https://disk0dancer.github.io/climate/
+Repository: https://github.com/disk0Dancer/climate
+License: Apache-2.0
+
+## Human docs
+
+- https://disk0dancer.github.io/climate/
+- https://disk0dancer.github.io/climate/index.md
+- https://github.com/disk0Dancer/climate/blob/main/README.md
+
+## Install
+
+- Go: go install github.com/disk0Dancer/climate/cmd/climate@latest
+- Releases: https://github.com/disk0Dancer/climate/releases
+- Homebrew: brew tap disk0Dancer/tap && brew install climate
+
+## Skills
+
+- Built-in skill prompt: https://raw.githubusercontent.com/disk0Dancer/climate/main/skills/climate.md
+- skills.sh-compatible skill: https://raw.githubusercontent.com/disk0Dancer/climate/main/skills/climate-generator/SKILL.md
+- Install command: npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
+
+## Key commands
+
+- climate generate [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] <openapi_spec>
+- climate list
+- climate remove [--purge-sources] <cli-name>
+- climate upgrade [--openapi <spec>] <cli-name>
+- climate publish <cli-name> [--owner <owner>] [--repo <repo>] [--visibility public|private]
+- climate skill generate [--mode=full|compact] <cli-name>
+- climate skill generator
+
+## Ops
+
+- GitHub Pages publishes from docs/
+- Tagged releases sync the Homebrew formula into disk0Dancer/homebrew-tap when HOMEBREW_TAP_TOKEN is configured
+- robots policy: https://disk0dancer.github.io/climate/robots.txt
+- Google Analytics is optional and controlled by docs/site-config.js
