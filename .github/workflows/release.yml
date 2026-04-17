@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Set version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          BINARY="climate-${GOOS}-${GOARCH}${EXT}"
+          go build -ldflags="-X github.com/disk0Dancer/climate/cmd/climate/commands.version=${VERSION}" -o "${BINARY}" ./cmd/climate
+          echo "BINARY=${BINARY}" >> "$GITHUB_ENV"
+
+      - name: Package binary
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "climate-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${BINARY}"
+            echo "ARCHIVE=climate-${{ matrix.goos }}-${{ matrix.goarch }}.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "climate-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${BINARY}"
+            echo "ARCHIVE=climate-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Compute SHA256
+        run: |
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          generate_release_notes: true

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>climate — OpenAPI → production-ready CLI on Go</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --code-bg: #1f2937;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Layout ── */
+    header, section, footer { max-width: 900px; margin: 0 auto; padding: 0 1.5rem; }
+    header { padding-top: 5rem; padding-bottom: 4rem; text-align: center; }
+
+    /* ── Hero ── */
+    .hero-eyebrow { font-size: .85rem; color: var(--accent2); text-transform: uppercase; letter-spacing: .1em; margin-bottom: .75rem; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; line-height: 1.15; }
+    h1 span { color: var(--accent); }
+    .hero-sub { margin-top: 1rem; font-size: 1.15rem; color: var(--muted); max-width: 600px; margin-left: auto; margin-right: auto; }
+    .hero-buttons { margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: .6rem 1.4rem; border-radius: 6px; font-weight: 600; font-size: .95rem; transition: opacity .15s; }
+    .btn-primary { background: var(--accent); color: #0d1117; }
+    .btn-outline { border: 1px solid var(--border); color: var(--text); }
+    .btn:hover { opacity: .85; text-decoration: none; }
+
+    /* ── Sections ── */
+    section { padding-top: 3.5rem; padding-bottom: 3.5rem; border-top: 1px solid var(--border); }
+    h2 { font-size: 1.6rem; margin-bottom: 1.25rem; }
+    h3 { font-size: 1.1rem; margin-bottom: .5rem; color: var(--accent); }
+    p { margin-bottom: 1rem; color: #ccd6f6; }
+
+    /* ── Features grid ── */
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }
+    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+    .feature-icon { font-size: 1.5rem; margin-bottom: .5rem; }
+
+    /* ── Code blocks ── */
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; margin: .75rem 0; }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: .88rem; color: #e2e8f0; }
+    pre code { background: none; }
+    :not(pre) > code { background: var(--code-bg); padding: .15em .4em; border-radius: 4px; font-size: .85em; }
+
+    /* ── Install tabs ── */
+    .tabs { display: flex; gap: .5rem; margin-bottom: -.5rem; }
+    .tab { padding: .4rem .9rem; border-radius: 6px 6px 0 0; cursor: pointer; font-size: .9rem; background: var(--surface); border: 1px solid var(--border); border-bottom: none; color: var(--muted); }
+    .tab.active { background: var(--code-bg); color: var(--text); border-color: var(--border); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
+    th, td { text-align: left; padding: .55rem .75rem; border: 1px solid var(--border); }
+    th { background: var(--surface); color: var(--muted); font-weight: 600; }
+
+    /* ── Footer ── */
+    footer { text-align: center; padding-top: 2.5rem; padding-bottom: 2.5rem; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--border); }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<header>
+  <p class="hero-eyebrow">Open Source · Go · LLM-ready</p>
+  <h1><span>climate</span> — OpenAPI → production-ready CLI on Go</h1>
+  <p class="hero-sub">
+    Generate typed, auth-aware Go CLIs from any OpenAPI 3.x spec in seconds.
+    Built for humans <em>and</em> AI agents.
+  </p>
+  <div class="hero-buttons">
+    <a class="btn btn-primary" href="#quickstart">Quick Start</a>
+    <a class="btn btn-outline" href="https://github.com/disk0Dancer/climate">GitHub</a>
+  </div>
+</header>
+
+<!-- ── Features ───────────────────────────────────────────────────────────── -->
+<section id="features">
+  <h2>Why climate?</h2>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h3>Single binary</h3>
+      <p>One <code>climate</code> binary turns any OpenAPI spec into a compiled Go CLI — no templates to edit.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔐</div>
+      <h3>Auth built-in</h3>
+      <p>API key (header/query/cookie), HTTP bearer &amp; basic, OAuth2 client credentials — all wired automatically.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🤖</div>
+      <h3>LLM-agent ready</h3>
+      <p>JSON output everywhere. <code>climate skill generate</code> emits a plain-text prompt so agents can self-register any CLI as a skill.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🏗️</div>
+      <h3>Strongly typed</h3>
+      <p>Generated code uses Go + cobra; path/query params become typed flags with validation.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Installation ───────────────────────────────────────────────────────── -->
+<section id="install">
+  <h2>Installation</h2>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('go', event)">Go</div>
+    <div class="tab" onclick="switchTab('brew', event)">Homebrew</div>
+    <div class="tab" onclick="switchTab('release', event)">GitHub Release</div>
+  </div>
+
+  <div id="tab-go" class="tab-content active">
+    <pre><code>go install github.com/disk0Dancer/climate/cmd/climate@latest</code></pre>
+    <p>Requires Go 1.21+. The binary will be placed in <code>$(go env GOPATH)/bin</code>.</p>
+  </div>
+
+  <div id="tab-brew" class="tab-content">
+    <pre><code>brew tap disk0dancer/tap
+brew install climate</code></pre>
+  </div>
+
+  <div id="tab-release" class="tab-content">
+    <pre><code># Linux (amd64)
+curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate_linux_amd64.tar.gz | tar xz
+sudo mv climate /usr/local/bin/
+
+# macOS (arm64 / Apple Silicon)
+curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate_darwin_arm64.tar.gz | tar xz
+sudo mv climate /usr/local/bin/</code></pre>
+    <p>Pre-built binaries for Linux, macOS, and Windows (amd64/arm64) are available on the
+    <a href="https://github.com/disk0Dancer/climate/releases">Releases page</a>.</p>
+  </div>
+</section>
+
+<!-- ── Quick Start ────────────────────────────────────────────────────────── -->
+<section id="quickstart">
+  <h2>Quick Start</h2>
+
+  <h3>1. Generate a CLI from an OpenAPI spec</h3>
+  <pre><code>climate generate --name petstore https://petstore3.swagger.io/api/v3/openapi.json</code></pre>
+
+  <h3>2. Use the generated CLI</h3>
+  <pre><code># List pets
+petstore pet list --output=json
+
+# Get a pet by ID
+petstore pet get --pet-id 1
+
+# Create a pet (with JSON body)
+petstore pet add --data-json '{"name":"Fido","status":"available"}'</code></pre>
+
+  <h3>3. Authenticate</h3>
+  <pre><code># API key via environment variable
+export PETSTORE_APIKEY_API_KEY=my-secret-key
+petstore pet list
+
+# Bearer token
+export PETSTORE_TOKEN=my-bearer-token
+petstore pet list</code></pre>
+
+  <h3>4. List all generated CLIs</h3>
+  <pre><code>climate list</code></pre>
+</section>
+
+<!-- ── CLI Reference ──────────────────────────────────────────────────────── -->
+<section id="commands">
+  <h2>climate Commands</h2>
+
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>climate generate &lt;spec&gt;</code></td><td>Generate &amp; build a CLI from an OpenAPI spec (URL or file).</td></tr>
+      <tr><td><code>climate list</code></td><td>List all generated CLIs registered in the local manifest.</td></tr>
+      <tr><td><code>climate remove &lt;name&gt;</code></td><td>Remove a generated CLI (add <code>--purge-sources</code> to also delete source).</td></tr>
+      <tr><td><code>climate upgrade &lt;name&gt;</code></td><td>Re-generate a CLI from an updated spec.</td></tr>
+      <tr><td><code>climate skill generate &lt;name&gt;</code></td><td>Print a Markdown skill prompt for an LLM agent to self-register the CLI.</td></tr>
+      <tr><td><code>climate skill generator</code></td><td>Print the <code>climate.generator</code> skill file (for registering climate itself with an agent).</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:1.5rem">Flags for <code>generate</code></h3>
+  <table>
+    <thead>
+      <tr><th>Flag</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--name</code></td><td>Override the generated binary name.</td></tr>
+      <tr><td><code>--out-dir</code></td><td>Directory to write generated Go source code.</td></tr>
+      <tr><td><code>--no-build</code></td><td>Generate source only; skip <code>go build</code>.</td></tr>
+      <tr><td><code>--force</code></td><td>Overwrite an existing output directory.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── Auth Reference ─────────────────────────────────────────────────────── -->
+<section id="auth">
+  <h2>Authentication</h2>
+  <p>
+    climate reads <code>components.securitySchemes</code> from the spec and generates auth
+    handling for every scheme it finds. Credentials are resolved in priority order:
+    <strong>CLI flag → ENV variable</strong>.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Scheme</th><th>ENV variable</th><th>CLI flag</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>API key (header/query/cookie)</td><td><code>&lt;CLI&gt;_&lt;SCHEME&gt;_API_KEY</code></td><td><code>--&lt;scheme&gt;-key</code></td></tr>
+      <tr><td>HTTP Bearer</td><td><code>&lt;CLI&gt;_TOKEN</code></td><td><code>--token</code></td></tr>
+      <tr><td>HTTP Basic</td><td><code>&lt;CLI&gt;_USERNAME</code> / <code>&lt;CLI&gt;_PASSWORD</code></td><td><code>--username --password</code></td></tr>
+      <tr><td>OAuth2 client_credentials</td><td><code>&lt;CLI&gt;_CLIENT_ID</code> / <code>&lt;CLI&gt;_CLIENT_SECRET</code></td><td><code>--client-id --client-secret</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── Agent integration ──────────────────────────────────────────────────── -->
+<section id="agents">
+  <h2>LLM Agent Integration (skills.sh)</h2>
+  <p>
+    climate ships with a ready-to-use <strong>Markdown skill file</strong>
+    (<code>skills/climate.md</code>) that lets AI agents like Claude Code register
+    climate as a tool and generate CLIs for any API on demand.
+  </p>
+
+  <h3>Register climate with your agent</h3>
+  <pre><code># Print the climate.generator skill prompt
+climate skill generator</code></pre>
+
+  <h3>Agent workflow (automatic)</h3>
+  <pre><code># Step 1 — agent generates a CLI
+climate generate https://api.example.com/openapi.yaml
+
+# Step 2 — agent gets a skill prompt for the new CLI
+climate skill generate myapi
+
+# Step 3 — agent follows the self-registration instructions in the prompt
+# and uses the myapi CLI for all subsequent tasks</code></pre>
+
+  <p>
+    All commands output structured JSON, making them trivially parseable by any agent.
+    Error objects always include <code>error.code</code> and <code>error.message</code>.
+  </p>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer>
+  <p>
+    <a href="https://github.com/disk0Dancer/climate">GitHub</a> ·
+    <a href="https://github.com/disk0Dancer/climate/issues">Issues</a> ·
+    <a href="https://github.com/disk0Dancer/climate/releases">Releases</a> ·
+    <a href="https://github.com/disk0Dancer/climate/blob/main/LICENSE">License</a>
+  </p>
+  <p style="margin-top:.5rem">© 2026 disk0Dancer — MIT License</p>
+</footer>
+
+<script>
+  function switchTab(id, event) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
