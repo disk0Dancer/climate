@@ -11,6 +11,7 @@ so you can self-register those CLIs as new skills.
 - Generate a typed Go CLI from any OpenAPI spec (URL or local file).
 - List all CLIs you have already generated.
 - Get a plain-text skill prompt for any generated CLI so you can self-register it.
+- Publish a generated CLI into a GitHub repository with lifecycle bootstrap.
 - Remove or upgrade a previously generated CLI.
 
 ---
@@ -73,6 +74,20 @@ self-register the CLI as a new skill.
 
 ---
 
+### Publish a generated CLI to GitHub
+
+```
+climate publish [--owner <owner>] [--repo <repo>] [--visibility public|private] [--github-token <token>] <cli-name>
+```
+
+Creates or reuses a GitHub repository through the GitHub API, writes a
+bootstrap README plus CI/release workflows, initializes git, and pushes the
+generated source tree.
+
+Authentication is read from `--github-token`, `GITHUB_TOKEN`, or `GH_TOKEN`.
+
+---
+
 ### Remove a generated CLI
 
 ```
@@ -117,8 +132,9 @@ On error commands exit non-zero and print to stderr:
 1. User provides an OpenAPI spec URL or file path.
 2. Run `climate generate <url>` → note the `cli_name` in the JSON response.
 3. Run `climate skill generate <cli_name>` → read the plain-text prompt it prints.
-4. Follow the self-registration instructions inside that prompt.
-5. Use the new CLI skill for all subsequent tasks that involve that API.
+4. Run `climate publish <cli_name>` if the user wants the generated CLI managed on GitHub.
+5. Follow the self-registration instructions inside that prompt.
+6. Use the new CLI skill for all subsequent tasks that involve that API.
 
 ---
 
@@ -129,8 +145,12 @@ On error commands exit non-zero and print to stderr:
 go install github.com/disk0Dancer/climate/cmd/climate@latest
 
 # via Homebrew
-brew tap disk0dancer/tap
+brew tap disk0Dancer/tap
 brew install climate
+
+# via GitHub Releases
+curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate-darwin-arm64.tar.gz | tar xz
+sudo mv climate-darwin-arm64 /usr/local/bin/climate
 ```
 
 Binaries for Linux, macOS, and Windows are also available on the

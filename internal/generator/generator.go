@@ -39,11 +39,11 @@ type Result struct {
 
 // Meta is written alongside generated sources.
 type Meta struct {
-	CLIName       string `json:"cli_name"`
-	OpenAPIHash   string `json:"openapi_hash"`
-	GeneratedAt   string `json:"generated_at"`
+	CLIName        string `json:"cli_name"`
+	OpenAPIHash    string `json:"openapi_hash"`
+	GeneratedAt    string `json:"generated_at"`
 	ClimateVersion string `json:"climate_version"`
-	SpecSource    string `json:"spec_source,omitempty"`
+	SpecSource     string `json:"spec_source,omitempty"`
 }
 
 // Generate generates a Go CLI project from an OpenAPI spec and optionally builds it.
@@ -150,11 +150,11 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 
 	// Write climate_meta.json
 	meta := Meta{
-		CLIName:       cliName,
-		OpenAPIHash:   hash,
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		CLIName:        cliName,
+		OpenAPIHash:    hash,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
 		ClimateVersion: Version,
-		SpecSource:    specSource,
+		SpecSource:     specSource,
 	}
 	metaJSON, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -463,10 +463,12 @@ var (
 
 const defaultBaseURL = %q
 
+var version = %q
+
 var rootCmd = &cobra.Command{
 	Use:     %q,
 	Short:   %q,
-	Version: %q,
+	Version: version,
 }
 
 // Execute runs the root command.
@@ -536,9 +538,9 @@ func exitWithError(statusCode int, code, message string, raw interface{}) {
 		imports.String(),
 		authVarDecls.String(),
 		baseURL,
+		openAPI.Info.Version,
 		cliName,
 		description,
-		openAPI.Info.Version,
 		authFlagInits.String(),
 		cliUpper+"_BASE_URL",
 		authHeadersBody.String(),

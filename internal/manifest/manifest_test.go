@@ -108,6 +108,40 @@ func TestManifestUpsertUpdates(t *testing.T) {
 	}
 }
 
+func TestManifestUpsertPreservesPublishMetadata(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+
+	mf, _ := manifest.LoadFrom(path)
+	publishedAt := time.Now().Add(-time.Minute)
+	mf.Upsert(manifest.CLIEntry{
+		Name:                    "myapi",
+		Version:                 "1.0.0",
+		RepositoryURL:           "https://github.com/disk0Dancer/myapi",
+		RepositoryFullName:      "disk0Dancer/myapi",
+		RepositorySSHURL:        "git@github.com:disk0Dancer/myapi.git",
+		RepositoryDefaultBranch: "main",
+		PublishedAt:             publishedAt,
+		LifecycleManaged:        true,
+	})
+
+	mf.Upsert(manifest.CLIEntry{
+		Name:    "myapi",
+		Version: "2.0.0",
+	})
+
+	entry := mf.List()[0]
+	if entry.RepositoryFullName != "disk0Dancer/myapi" {
+		t.Fatalf("RepositoryFullName = %q", entry.RepositoryFullName)
+	}
+	if !entry.PublishedAt.Equal(publishedAt) {
+		t.Fatal("PublishedAt should be preserved on update")
+	}
+	if !entry.LifecycleManaged {
+		t.Fatal("LifecycleManaged should be preserved on update")
+	}
+}
+
 func TestManifestGet(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "manifest.json")

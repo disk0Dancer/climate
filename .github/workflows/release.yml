@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  HOMEBREW_TAP_REPO: disk0Dancer/homebrew-tap
+
 jobs:
   release:
     name: Build and Release
@@ -72,3 +75,76 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
           generate_release_notes: true
+
+  update-homebrew-tap:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Check required secret
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "::error::Set the HOMEBREW_TAP_TOKEN repository secret to enable Homebrew tap updates."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        id: version
+        run: |
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "source_url=https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Download tagged source archive
+        run: curl -fsSL -o climate-source.tar.gz "${{ steps.version.outputs.source_url }}"
+
+      - name: Compute source SHA256
+        id: source
+        run: echo "sha256=$(sha256sum climate-source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" "${RUNNER_TEMP}/homebrew-tap"
+
+      - name: Render formula
+        run: |
+          mkdir -p "${RUNNER_TEMP}/homebrew-tap/Formula"
+          bash scripts/render_homebrew_formula.sh \
+            "${{ steps.version.outputs.tag }}" \
+            "${{ steps.source.outputs.sha256 }}" \
+            > "${RUNNER_TEMP}/homebrew-tap/Formula/climate.rb"
+
+      - name: Commit and push tap update
+        working-directory: ${{ runner.temp }}/homebrew-tap
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git diff --quiet -- Formula/climate.rb; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+
+          git config user.name "disk0Dancer"
+          git config user.email "gchuracov.003@gmail.com"
+          git add Formula/climate.rb
+          cat > commit-message.txt <<EOF
+          Update climate Homebrew formula for ${RELEASE_TAG}
+
+          Automated sync after publishing a tagged climate release.
+
+          Constraint: Homebrew formula must stay pinned to a concrete tagged source archive
+          Rejected: latest release URL | unstable sha256 and non-reproducible formula updates
+          Confidence: high
+          Scope-risk: narrow
+          Directive: Keep formula url + sha256 tied to immutable tags; never switch stable to latest
+          Tested: GitHub release asset publication completed before tap sync
+          Not-tested: brew install execution on the GitHub Actions runner
+          EOF
+          git commit -F commit-message.txt
+          git push origin HEAD:main
