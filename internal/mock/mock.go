@@ -164,7 +164,10 @@ func (s *Server) makeHandler(path string, item spec.PathItem) http.HandlerFunc {
 		statusCode, body := s.generateResponse(op)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		_ = json.NewEncoder(w).Encode(body)
+		if encErr := json.NewEncoder(w).Encode(body); encErr != nil {
+			// The header is already written; log to stderr as best effort.
+			fmt.Fprintf(w, `{"error":"response encoding failed"}`)
+		}
 	}
 }
 

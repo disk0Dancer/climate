@@ -143,11 +143,8 @@ func MergeToBytes(inputs []SpecInput, opts Options) (*spec.OpenAPI, []byte, erro
 	return merged, raw, nil
 }
 
-// validatePrefix checks that prefix is non-empty and starts with "/".
+// validatePrefix checks that prefix starts with "/".
 func validatePrefix(prefix string) error {
-	if prefix == "" {
-		return fmt.Errorf("prefix must not be empty")
-	}
 	if !strings.HasPrefix(prefix, "/") {
 		return fmt.Errorf("prefix %q must start with '/'", prefix)
 	}

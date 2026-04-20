@@ -132,7 +132,7 @@ func parseSpecInputs(args []string) ([]compose.SpecInput, error) {
 func buildSpecSourceLabel(inputs []compose.SpecInput) string {
 	parts := make([]string, len(inputs))
 	for i, inp := range inputs {
-		parts[i] = inp.Source + inp.Prefix
+		parts[i] = inp.Source + "@" + inp.Prefix
 	}
 	return "compose:[" + strings.Join(parts, ",") + "]"
 }
