@@ -42,6 +42,8 @@ petstore pet get --pet-id 1
 | Command | Purpose |
 |---|---|
 | `generate` | Create CLI from OpenAPI spec |
+| `compose` | Merge multiple specs (with prefixes) into one facade CLI |
+| `mock` | Run local mock HTTP server from OpenAPI spec |
 | `list` | Show registered CLIs |
 | `remove` | Delete a generated CLI |
 | `upgrade` | Regenerate from updated spec |
@@ -60,6 +62,12 @@ npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
 
 - [llms.txt](./llms.txt)
 - [robots.txt](./robots.txt)
+
+## Design docs
+
+- [Compose design](./design-compose.md)
+- [Mock design](./design-mock.md)
+- [OpenAPI 3.0 support matrix](./openapi-3-support-matrix.md)
 
 ## License
 
