@@ -18,9 +18,6 @@ func TestManifestLoadSave(t *testing.T) {
 		t.Fatalf("LoadFrom() error = %v", err)
 	}
 
-	if mf.List() == nil {
-		// nil slice is fine, but let's check length
-	}
 	if len(mf.List()) != 0 {
 		t.Errorf("expected empty manifest, got %d entries", len(mf.List()))
 	}

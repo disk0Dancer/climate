@@ -91,7 +91,9 @@ func TestMock_GetList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /pets: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
@@ -114,7 +116,9 @@ func TestMock_GetByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /pets/42: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
@@ -137,7 +141,9 @@ func TestMock_Post(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /pets: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusCreated {
 		t.Errorf("status = %d, want 201", resp.StatusCode)
 	}
@@ -150,7 +156,9 @@ func TestMock_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DELETE /pets/1: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("status = %d, want 204", resp.StatusCode)
 	}
@@ -163,7 +171,9 @@ func TestMock_MethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PUT /pets: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", resp.StatusCode)
 	}

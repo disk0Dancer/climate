@@ -191,7 +191,9 @@ func ensureOriginRemote(sourceDir, remoteURL string) error {
 
 func commitLifecycleBootstrap(sourceDir, repoFullName string) error {
 	messagePath := filepath.Join(sourceDir, ".climate-git-commit.txt")
-	defer os.Remove(messagePath)
+	defer func() {
+		_ = os.Remove(messagePath)
+	}()
 
 	message := fmt.Sprintf(`Publish generated CLI as a managed GitHub project
 

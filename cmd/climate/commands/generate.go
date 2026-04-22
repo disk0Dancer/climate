@@ -58,7 +58,7 @@ Examples:
 		// Update manifest
 		mf, err := manifest.Load()
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load manifest: %v\n", err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load manifest: %v\n", err)
 		} else {
 			mf.Upsert(manifest.CLIEntry{
 				Name:        result.CLIName,
@@ -69,7 +69,7 @@ Examples:
 				OpenAPISpec: specSource,
 			})
 			if saveErr := mf.Save(); saveErr != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save manifest: %v\n", saveErr)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save manifest: %v\n", saveErr)
 			}
 		}
 

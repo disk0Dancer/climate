@@ -82,7 +82,7 @@ Authentication is read from --github-token, GITHUB_TOKEN, or GH_TOKEN.`,
 
 		mf.Upsert(publish.PublishedManifestEntry(entry, result))
 		if saveErr := mf.Save(); saveErr != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save manifest: %v\n", saveErr)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save manifest: %v\n", saveErr)
 		}
 
 		writeJSON(result)

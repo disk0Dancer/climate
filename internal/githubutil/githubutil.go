@@ -173,7 +173,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body interface
 	if err != nil {
 		return fmt.Errorf("calling github api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

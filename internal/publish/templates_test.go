@@ -25,8 +25,8 @@ func TestEnsureLifecycleFilesCreatesManagedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureLifecycleFiles() error = %v", err)
 	}
-	if len(files) != 4 {
-		t.Fatalf("expected 4 managed files, got %d", len(files))
+	if len(files) != 6 {
+		t.Fatalf("expected 6 managed files, got %d", len(files))
 	}
 
 	readmeData, err := os.ReadFile(filepath.Join(dir, "README.md"))
@@ -38,6 +38,36 @@ func TestEnsureLifecycleFilesCreatesManagedFiles(t *testing.T) {
 	}
 	if !strings.Contains(string(readmeData), "go install github.com/disk0Dancer/petstore@latest") {
 		t.Fatal("README should include install snippet")
+	}
+
+	ciData, err := os.ReadFile(filepath.Join(dir, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("reading ci workflow: %v", err)
+	}
+	if !strings.Contains(string(ciData), "workflow_dispatch:") {
+		t.Fatal("CI workflow should support workflow_dispatch")
+	}
+	if !strings.Contains(string(ciData), "Run golangci-lint") {
+		t.Fatal("CI workflow should include golangci-lint")
+	}
+
+	autoFixData, err := os.ReadFile(filepath.Join(dir, ".github", "workflows", "ci-autofix.yml"))
+	if err != nil {
+		t.Fatalf("reading ci autofix workflow: %v", err)
+	}
+	if !strings.Contains(string(autoFixData), "workflow_run:") {
+		t.Fatal("CI autofix workflow should trigger from workflow_run")
+	}
+	if !strings.Contains(string(autoFixData), "actions/workflows/ci.yml/dispatches") {
+		t.Fatal("CI autofix workflow should re-dispatch CI after pushing fixes")
+	}
+
+	golangciData, err := os.ReadFile(filepath.Join(dir, ".golangci.yml"))
+	if err != nil {
+		t.Fatalf("reading golangci config: %v", err)
+	}
+	if !strings.Contains(string(golangciData), "ineffassign") {
+		t.Fatal("golangci config should include baseline linters")
 	}
 }
 

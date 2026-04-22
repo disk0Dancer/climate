@@ -245,11 +245,11 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 			if !seenVars[varName] {
 				seenVars[varName] = true
 				flagName := kebabCase(scheme.Name) + "-key"
-				authVarDecls.WriteString(fmt.Sprintf("\t%s string\n", varName))
-				authFlagInits.WriteString(fmt.Sprintf(
+				_, _ = fmt.Fprintf(&authVarDecls, "\t%s string\n", varName)
+				_, _ = fmt.Fprintf(&authFlagInits,
 					"\trootCmd.PersistentFlags().StringVar(&%s, %q, \"\", %q)\n",
 					varName, flagName, "API key for "+scheme.Name,
-				))
+				)
 				keyExpr := fmt.Sprintf(`
 	if %s == "" {
 		%s = os.Getenv(%q)
@@ -257,21 +257,21 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 				switch scheme.Spec.In {
 				case "header":
 					authHeadersBody.WriteString(keyExpr)
-					authHeadersBody.WriteString(fmt.Sprintf(`
+					_, _ = fmt.Fprintf(&authHeadersBody, `
 	if %s != "" {
 		headers[%q] = %s
 	}
-`, varName, scheme.Spec.Name, varName))
+`, varName, scheme.Spec.Name, varName)
 				case "query":
 					authQueryBody.WriteString(keyExpr)
-					authQueryBody.WriteString(fmt.Sprintf(`
+					_, _ = fmt.Fprintf(&authQueryBody, `
 	if %s != "" {
 		params[%q] = %s
 	}
-`, varName, scheme.Spec.Name, varName))
+`, varName, scheme.Spec.Name, varName)
 				case "cookie":
 					authHeadersBody.WriteString(keyExpr)
-					authHeadersBody.WriteString(fmt.Sprintf(`
+					_, _ = fmt.Fprintf(&authHeadersBody, `
 	if %s != "" {
 		if existing, ok := headers["Cookie"]; ok {
 			headers["Cookie"] = existing + "; " + %q + "=" + %s
@@ -279,7 +279,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 			headers["Cookie"] = %q + "=" + %s
 		}
 	}
-`, varName, scheme.Spec.Name, varName, scheme.Spec.Name, varName))
+`, varName, scheme.Spec.Name, varName, scheme.Spec.Name, varName)
 				}
 			}
 
@@ -289,7 +289,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 				envVar := cliUpper + "_TOKEN"
 				authVarDecls.WriteString("\tbearerToken string\n")
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&bearerToken, \"token\", \"\", \"Bearer token for authentication\")\n")
-				authHeadersBody.WriteString(fmt.Sprintf(`
+				_, _ = fmt.Fprintf(&authHeadersBody, `
 	{
 		tok := bearerToken
 		if tok == "" {
@@ -299,7 +299,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 			headers["Authorization"] = "Bearer " + tok
 		}
 	}
-`, envVar))
+`, envVar)
 			}
 
 		case auth.SchemeHTTPBasic:
@@ -310,7 +310,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 				authVarDecls.WriteString("\tpassword string\n")
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&username, \"username\", \"\", \"Username for basic auth\")\n")
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&password, \"password\", \"\", \"Password for basic auth\")\n")
-				authHeadersBody.WriteString(fmt.Sprintf(`
+				_, _ = fmt.Fprintf(&authHeadersBody, `
 	{
 		u := username
 		if u == "" {
@@ -324,7 +324,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 			headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(u+":"+p))
 		}
 	}
-`, cliUpper+"_USERNAME", cliUpper+"_PASSWORD"))
+`, cliUpper+"_USERNAME", cliUpper+"_PASSWORD")
 			}
 
 		case auth.SchemeOAuth2:
@@ -349,7 +349,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&oauth2Token, \"token\", \"\", \"OAuth2 access token (overrides client credentials flow)\")\n")
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&clientID, \"client-id\", \"\", \"OAuth2 client ID\")\n")
 				authFlagInits.WriteString("\trootCmd.PersistentFlags().StringVar(&clientSecret, \"client-secret\", \"\", \"OAuth2 client secret\")\n")
-				authHeadersBody.WriteString(fmt.Sprintf(`
+				_, _ = fmt.Fprintf(&authHeadersBody, `
 	{
 		tok := oauth2Token
 		if tok == "" {
@@ -379,7 +379,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 					cliUpper+"_CLIENT_ID",
 					cliUpper+"_CLIENT_SECRET",
 					tokenURL,
-				))
+				)
 			}
 		}
 	}
@@ -678,7 +678,7 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 	sb.WriteString("\t\"fmt\"\n")
 	sb.WriteString("\t\"os\"\n")
 	sb.WriteString("\t\"strings\"\n\n")
-	sb.WriteString(fmt.Sprintf("\t\"%s/internal/client\"\n", cliName))
+	_, _ = fmt.Fprintf(&sb, "\t\"%s/internal/client\"\n", cliName)
 	sb.WriteString("\t\"github.com/spf13/cobra\"\n")
 	sb.WriteString(")\n\n")
 
