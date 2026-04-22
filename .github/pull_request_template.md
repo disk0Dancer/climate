@@ -6,13 +6,13 @@ Describe the change and why it is needed.
 
 - 
 
-## Validation
+## Required workflow checklist
 
-- [ ] `go build ./...`
-- [ ] `go test ./...`
-
-## Checklist
-
-- [ ] Tests added/updated (if needed)
-- [ ] Documentation updated (if needed)
-- [ ] Backward compatibility considered
+- [ ] Design doc added/updated (`docs/`) when applicable
+- [ ] README/docs updated (`README.md`, `docs/index.md`) when behavior/UX changed
+- [ ] Skills updated (`skills/climate.md`, `skills/climate-generator/SKILL.md`) when commands/workflows changed
+- [ ] Tests added/updated
+- [ ] Implementation kept focused and scoped
+- [ ] `go build ./...` passes
+- [ ] `go test ./...` passes
+- [ ] CI checks are green

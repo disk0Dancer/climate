@@ -7,25 +7,38 @@ Thanks for your interest in contributing.
 - Search existing issues and pull requests to avoid duplicate work.
 - For larger changes, open an issue first to discuss approach and scope.
 
-## Development workflow
+## Required workflow for feature work
 
-1. Fork the repository and create a branch from `main`.
-2. Make focused, minimal changes.
-3. Run local checks:
+For feature changes, follow this sequence:
+
+1. **Design first**
+   - Describe problem, goals, non-goals, API/CLI UX, and edge cases.
+   - Add or update design docs in `docs/`.
+2. **Document behavior**
+   - Update user-facing docs (`README.md`, `docs/index.md`) when commands or capabilities change.
+3. **Write tests**
+   - Add targeted unit tests for new logic before/with implementation.
+4. **Implement code**
+   - Keep changes focused and consistent with project style.
+5. **Update skills**
+   - Update `skills/climate.md` and `skills/climate-generator/SKILL.md` when command set or workflows change.
+6. **Validate locally**
+   - Run:
 
    ```bash
    go build ./...
    go test ./...
    ```
 
-4. Update docs when behavior or UX changes.
-5. Open a pull request using the PR template.
+7. **Validate CI health**
+   - Ensure PR checks are green before merge.
 
 ## Pull request expectations
 
 - Keep PRs small and clearly scoped.
-- Include tests for behavior changes.
 - Explain what changed and why.
+- Include tests for behavior changes.
+- Update docs and skills files when required.
 - Ensure CI is green.
 
 ## Commit style
