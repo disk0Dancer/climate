@@ -236,7 +236,7 @@ jobs:
           fi
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
 
@@ -311,7 +311,7 @@ jobs:
         id: golangci_autofix
         if: steps.freshness.outputs.should_skip != 'true'
         continue-on-error: true
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
           args: --fix
