@@ -46,7 +46,7 @@ npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
 
 ## Publish
 
-Push a generated CLI to GitHub with CI and release workflows:
+Push a generated CLI to GitHub with CI, CI auto-fix, and release workflows:
 
 ```bash
 climate publish myapi --owner disk0Dancer
@@ -64,7 +64,7 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 | `list` | Show registered CLIs |
 | `remove` | Delete a generated CLI |
 | `upgrade` | Regenerate from updated spec |
-| `publish` | Push CLI to GitHub with CI/release |
+| `publish` | Push CLI to GitHub with CI/auto-fix/release |
 | `skill generate` | Emit agent skill prompt |
 
 ## Docs
@@ -72,6 +72,7 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 - [Site](https://disk0dancer.github.io/climate/)
 - [LLM index](https://disk0dancer.github.io/climate/llms.txt)
 - [Compose design](docs/design-compose.md)
+- [CI auto-fix design](docs/design-ci-autofix.md)
 - [Mock design](docs/design-mock.md)
 - [OpenAPI 3.0 support matrix](docs/openapi-3-support-matrix.md)
 

@@ -47,7 +47,7 @@ petstore pet get --pet-id 1
 | `list` | Show registered CLIs |
 | `remove` | Delete a generated CLI |
 | `upgrade` | Regenerate from updated spec |
-| `publish` | Push CLI to GitHub with CI/release |
+| `publish` | Push CLI to GitHub with CI/auto-fix/release |
 | `skill generate` | Emit agent skill prompt |
 
 ## Agent skills
@@ -66,6 +66,7 @@ npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
 ## Design docs
 
 - [Compose design](./design-compose.md)
+- [CI auto-fix design](./design-ci-autofix.md)
 - [Mock design](./design-mock.md)
 - [OpenAPI 3.0 support matrix](./openapi-3-support-matrix.md)
 

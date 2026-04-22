@@ -112,7 +112,7 @@ climate publish [--owner <owner>] [--repo <repo>] [--visibility public|private] 
 ```
 
 Creates or reuses a GitHub repository through the GitHub API, writes a
-bootstrap README plus CI/release workflows, initializes git, and pushes the
+bootstrap README plus CI/auto-fix/release workflows, initializes git, and pushes the
 generated source tree.
 
 Authentication is read from `--github-token`, `GITHUB_TOKEN`, or `GH_TOKEN`.

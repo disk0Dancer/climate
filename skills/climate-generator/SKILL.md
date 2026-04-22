@@ -104,7 +104,8 @@ climate publish [--owner <owner>] [--repo <repo>] [--visibility public|private] 
 ```
 
 This command creates or reuses a GitHub repository through the GitHub API,
-writes lifecycle files, initializes git, and pushes the generated source tree.
+writes lifecycle files including CI, CI auto-fix, and release workflows,
+initializes git, and pushes the generated source tree.
 
 ### Print the built-in climate skill
 

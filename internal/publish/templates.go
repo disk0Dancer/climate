@@ -32,7 +32,9 @@ func EnsureLifecycleFiles(sourceDir string, meta ProjectMetadata) ([]string, err
 	}{
 		{Path: "README.md", Marker: markdownManagedMarker, Content: readmeContent(meta)},
 		{Path: ".gitignore", Marker: textManagedMarker, Content: gitignoreContent()},
+		{Path: ".golangci.yml", Marker: textManagedMarker, Content: golangciContent()},
 		{Path: filepath.Join(".github", "workflows", "ci.yml"), Marker: textManagedMarker, Content: ciWorkflowContent(meta)},
+		{Path: filepath.Join(".github", "workflows", "ci-autofix.yml"), Marker: textManagedMarker, Content: ciAutofixWorkflowContent(meta)},
 		{Path: filepath.Join(".github", "workflows", "release.yml"), Marker: textManagedMarker, Content: releaseWorkflowContent(meta)},
 	}
 
@@ -172,6 +174,19 @@ dist/
 `
 }
 
+func golangciContent() string {
+	return textManagedMarker + `
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - unused
+`
+}
+
 func ciWorkflowContent(meta ProjectMetadata) string {
 	return fmt.Sprintf(`%s
 name: CI
@@ -181,6 +196,10 @@ on:
     branches: [%s]
   pull_request:
     branches: [%s]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -192,14 +211,143 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version-file: go.mod
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.11.3
 
       - name: Run tests
         run: go test ./...
 
+      - name: Run go vet
+        run: go vet ./...
+
       - name: Build
         run: go build ./...
 `, textManagedMarker, meta.DefaultBranch, meta.DefaultBranch)
+}
+
+func ciAutofixWorkflowContent(meta ProjectMetadata) string {
+	return fmt.Sprintf(`%s
+name: CI Auto-Fix
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ci-autofix-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout failed branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - name: Stop on stale branch head
+        id: freshness
+        run: |
+          current_sha="$(git rev-parse HEAD)"
+          expected_sha="${{ github.event.workflow_run.head_sha }}"
+          if [ "$current_sha" != "$expected_sha" ]; then
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+            echo "Branch advanced from ${expected_sha} to ${current_sha}; skipping stale auto-fix run."
+            exit 0
+          fi
+          echo "should_skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.freshness.outputs.should_skip != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        if: steps.freshness.outputs.should_skip != 'true'
+        run: go mod download
+
+      - name: Run gofmt auto-fix
+        if: steps.freshness.outputs.should_skip != 'true'
+        run: gofmt -w .
+
+      - name: Run golangci-lint auto-fix
+        id: golangci_autofix
+        if: steps.freshness.outputs.should_skip != 'true'
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.11.3
+          args: --fix
+
+      - name: Detect changes
+        id: changes
+        if: steps.freshness.outputs.should_skip != 'true'
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No auto-fixable changes detected."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push auto-fixes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: auto-fix formatting and lint"
+          git push origin HEAD:${{ github.event.workflow_run.head_branch }}
+
+      - name: Re-dispatch CI
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/ci.yml/dispatches \
+            -d '{"ref":"${{ github.event.workflow_run.head_branch }}"}'
+`, textManagedMarker)
 }
 
 func releaseWorkflowContent(meta ProjectMetadata) string {
@@ -238,7 +386,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version-file: go.mod
 
       - name: Build binary
         env:
