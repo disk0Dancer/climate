@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -35,14 +37,36 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Check formatting
+      - name: Auto-format Go code
+        run: gofmt -w .
+
+      - name: Auto-fix golangci-lint issues
+        id: golangci_autofix
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.11.3
+          args: --fix
+
+      - name: Auto-commit fix changes
+        if: (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && steps.golangci_autofix.outcome == 'success'
         run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "These files are not gofmt-formatted:"
-            echo "$unformatted"
-            exit 1
+          if git diff --quiet; then
+            echo "No auto-fix changes to commit"
+            exit 0
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit"
+            exit 0
+          fi
+
+          git commit -m "ci: auto-fix gofmt and golangci-lint"
+          git push
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
