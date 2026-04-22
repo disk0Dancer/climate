@@ -279,8 +279,8 @@ func TestGenerateServerVariableFlagsAndInterpolation(t *testing.T) {
 	if !strings.Contains(content, "PETSTORE_SERVER_VAR_REGION") {
 		t.Fatal("root.go should expose PETSTORE_SERVER_VAR_REGION env override")
 	}
-	if !strings.Contains(content, "PETSTORE_SERVER_VAR_BASEPATH") {
-		t.Fatal("root.go should expose PETSTORE_SERVER_VAR_BASEPATH env override")
+	if !strings.Contains(content, "PETSTORE_SERVER_VAR_BASE_PATH") {
+		t.Fatal("root.go should expose PETSTORE_SERVER_VAR_BASE_PATH env override")
 	}
 	if !strings.Contains(content, `u = strings.ReplaceAll(u, "{region}", v)`) {
 		t.Fatal("root.go should interpolate {region}")

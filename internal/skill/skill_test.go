@@ -181,8 +181,8 @@ func TestGenerateCLIPromptServerVariables(t *testing.T) {
 	if !strings.Contains(prompt, "PETSTORE_SERVER_VAR_REGION") {
 		t.Error("prompt should mention PETSTORE_SERVER_VAR_REGION env var")
 	}
-	if !strings.Contains(prompt, "PETSTORE_SERVER_VAR_BASEPATH") {
-		t.Error("prompt should mention PETSTORE_SERVER_VAR_BASEPATH env var")
+	if !strings.Contains(prompt, "PETSTORE_SERVER_VAR_BASE_PATH") {
+		t.Error("prompt should mention PETSTORE_SERVER_VAR_BASE_PATH env var")
 	}
 }
 

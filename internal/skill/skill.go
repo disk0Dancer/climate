@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/disk0Dancer/climate/internal/auth"
 	"github.com/disk0Dancer/climate/internal/manifest"
@@ -99,7 +100,7 @@ func GenerateCLIPrompt(entry manifest.CLIEntry, openAPI *spec.OpenAPI, mode Mode
 			for _, name := range varNames {
 				v := openAPI.Servers[0].Variables[name]
 				flag := "--server-var-" + kebabCase(name)
-				env := envUpper(entry.Name) + "_SERVER_VAR_" + envUpper(name)
+				env := serverVariableEnvName(entry.Name, name)
 				def := v.Default
 				if def == "" {
 					def = "(empty)"
@@ -328,4 +329,38 @@ func kebabCase(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func serverVariableEnvName(cliName, name string) string {
+	var b strings.Builder
+	prevLowerOrDigit := false
+	prevUnderscore := false
+
+	for _, r := range name {
+		switch {
+		case unicode.IsUpper(r):
+			if prevLowerOrDigit && !prevUnderscore && b.Len() > 0 {
+				b.WriteRune('_')
+			}
+			b.WriteRune(r)
+			prevLowerOrDigit = false
+			prevUnderscore = false
+		case unicode.IsLower(r) || unicode.IsDigit(r):
+			b.WriteRune(unicode.ToUpper(r))
+			prevLowerOrDigit = true
+			prevUnderscore = false
+		default:
+			if !prevUnderscore && b.Len() > 0 {
+				b.WriteRune('_')
+				prevUnderscore = true
+			}
+			prevLowerOrDigit = false
+		}
+	}
+
+	suffix := strings.Trim(b.String(), "_")
+	if suffix == "" {
+		suffix = "VAR"
+	}
+	return envUpper(cliName) + "_SERVER_VAR_" + suffix
 }
