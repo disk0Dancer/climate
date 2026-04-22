@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "climate-generator": {
+      "source": "disk0Dancer/climate",
+      "sourceType": "github",
+      "computedHash": "b11674e8c3d850410882e5b80b8d80aa032a48b0ebb7066de6306c313b5d723d"
+    }
+  }
+}
