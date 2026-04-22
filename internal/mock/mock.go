@@ -60,6 +60,8 @@ import (
 	"github.com/disk0Dancer/climate/internal/spec"
 )
 
+const defaultEventTimeout = 10 * time.Second
+
 // Server is a local HTTP mock server driven by an OpenAPI specification.
 type Server struct {
 	openAPI  *spec.OpenAPI
@@ -349,7 +351,7 @@ func EmitEvent(targetURL string, method string, payload interface{}) (int, error
 		return 0, fmt.Errorf("marshal payload: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultEventTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(strings.TrimSpace(method)), targetURL, bytes.NewReader(b))

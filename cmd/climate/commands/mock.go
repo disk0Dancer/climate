@@ -45,10 +45,13 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		specSource := args[0]
 		method := strings.ToUpper(strings.TrimSpace(mockEventMethod))
+		if method == "" {
+			method = http.MethodPost
+		}
 		emitMode := strings.TrimSpace(mockEmitURL) != ""
 
 		if !emitMode && (cmd.Flags().Changed("event-path") || cmd.Flags().Changed("event-method")) {
-			exitError("--event-path and --event-method require --emit-url", nil)
+			exitError("--event-path or --event-method require --emit-url", nil)
 		}
 		if emitMode {
 			if strings.TrimSpace(mockEventPath) == "" {
