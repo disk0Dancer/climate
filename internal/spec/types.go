@@ -21,8 +21,16 @@ type Info struct {
 
 // Server represents an API server.
 type Server struct {
-	URL         string `json:"url"         yaml:"url"`
-	Description string `json:"description" yaml:"description"`
+	URL         string                    `json:"url"         yaml:"url"`
+	Description string                    `json:"description" yaml:"description"`
+	Variables   map[string]ServerVariable `json:"variables"   yaml:"variables"`
+}
+
+// ServerVariable represents one templated variable for a server URL.
+type ServerVariable struct {
+	Enum        []string `json:"enum"        yaml:"enum"`
+	Default     string   `json:"default"     yaml:"default"`
+	Description string   `json:"description" yaml:"description"`
 }
 
 // Tag represents an OpenAPI tag.

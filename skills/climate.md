@@ -142,7 +142,15 @@ Re-generates and rebuilds a CLI. Pass `--openapi` to use a different spec.
 
 ## Output format
 
-On success all commands exit 0 and print JSON to stdout.
+Most commands exit 0 and print JSON to stdout (`generate`, `compose`, `list`,
+`publish`, `remove`, `upgrade`).
+
+Text/Markdown-oriented commands intentionally print plain text:
+
+- `climate mock` (server mode) prints startup info and route table
+- `climate mock --emit-url ...` prints a one-line emission result
+- `climate skill generate` prints Markdown prompt text
+- `climate skill generator` prints the built-in Markdown skill
 
 On error commands exit non-zero and print to stderr:
 

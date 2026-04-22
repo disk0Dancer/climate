@@ -232,3 +232,60 @@ func TestGenerateRootVersionIsBuildOverridable(t *testing.T) {
 		t.Fatal("root.go should wire cobra version through the version variable")
 	}
 }
+
+func TestGenerateServerVariableFlagsAndInterpolation(t *testing.T) {
+	outDir := t.TempDir()
+	openAPI := sampleOpenAPI()
+	openAPI.Servers = []spec.Server{
+		{
+			URL: "https://{region}.api.example.com/{basePath}",
+			Variables: map[string]spec.ServerVariable{
+				"region": {
+					Default: "eu",
+				},
+				"basePath": {
+					Default: "v1",
+				},
+			},
+		},
+	}
+	rawSpec := []byte(`{}`)
+
+	_, err := generator.Generate(openAPI, rawSpec, generator.Options{
+		CLIName: "petstore",
+		OutDir:  outDir,
+		NoBuild: true,
+		Force:   true,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, "cmd", "root.go"))
+	if err != nil {
+		t.Fatalf("reading root.go: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "const defaultBaseURLTemplate = \"https://{region}.api.example.com/{basePath}\"") {
+		t.Fatal("root.go should keep the templated server URL")
+	}
+	if !strings.Contains(content, `StringVar(&serverVarRegion, "server-var-region"`) {
+		t.Fatal("root.go should declare --server-var-region")
+	}
+	if !strings.Contains(content, `StringVar(&serverVarBasePath, "server-var-base-path"`) {
+		t.Fatal("root.go should declare --server-var-base-path")
+	}
+	if !strings.Contains(content, "PETSTORE_SERVER_VAR_REGION") {
+		t.Fatal("root.go should expose PETSTORE_SERVER_VAR_REGION env override")
+	}
+	if !strings.Contains(content, "PETSTORE_SERVER_VAR_BASEPATH") {
+		t.Fatal("root.go should expose PETSTORE_SERVER_VAR_BASEPATH env override")
+	}
+	if !strings.Contains(content, `u = strings.ReplaceAll(u, "{region}", v)`) {
+		t.Fatal("root.go should interpolate {region}")
+	}
+	if !strings.Contains(content, `u = strings.ReplaceAll(u, "{basePath}", v)`) {
+		t.Fatal("root.go should interpolate {basePath}")
+	}
+}

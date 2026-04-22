@@ -23,8 +23,8 @@ what is partially supported, and what should be designed/implemented next.
 | Local mock simulator (`mock`) | ✅ Implemented | Auto responses from spec schema + latency | Add optional examples-first mode |
 | `enum` | ✅ Implemented (mock) / ⚠️ partial (CLI) | Mock prefers first enum value | Add flag-level enum validation/help text |
 | `allOf`, `oneOf`, `anyOf`, `not` | ⚠️ Partial | Core flow works for simple schemas; advanced combiners not fully synthesized | Add schema normalizer for combiners |
-| `servers` and server variables | ⚠️ Partial | Primary server is used; limited variable ergonomics | Add variable interpolation flags in generated root command |
-| `callbacks` | ⚠️ Partial | Not mapped to generated CLI surface; mock can emit synthetic event payloads to target endpoints via flags | Add event command model (`events subscribe`/`events trigger`) |
+| `servers` and server variables | ✅ Implemented | Generated CLIs use primary server URL and support server-template interpolation via `--server-var-<name>` and `<CLI>_SERVER_VAR_<NAME>` env vars | Keep stable |
+| `callbacks` | ⚠️ Partial | Not mapped to generated CLI surface; `climate mock` can generate and emit synthetic event payloads to target endpoints via flags | Add event command model (`events subscribe`/`events trigger`) |
 | `webhooks` (3.1) | ⚠️ Partial | Top-level webhook declarations are not yet parsed as first-class objects; mock has event emission mode for local webhook testing | Add webhook simulation and event ingestion model |
 | Links | ❌ Planned | Ignored | Add optional “follow-up command hint” output |
 | Examples (`example` / `examples`) | ⚠️ Partial | Not consistently preferred in generation | Use examples as first-class sample payload/response source |

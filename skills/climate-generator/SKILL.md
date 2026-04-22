@@ -146,7 +146,10 @@ climate publish petstore --owner disk0Dancer
 
 ## Notes
 
-- All climate output is JSON on success.
+- Most climate commands output JSON on success (`generate`, `compose`, `list`,
+  `publish`, `remove`, `upgrade`).
+- `climate mock` in server mode and both `climate skill ...` commands output
+  plain text / Markdown by design.
 - Errors are emitted as structured JSON on stderr.
 - Generated CLIs follow the shape `<cli-name> <tag> <operation> [flags] --output=json|table|raw`.
 - Homebrew install is available via `brew tap disk0Dancer/tap && brew install climate`.

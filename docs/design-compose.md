@@ -85,7 +85,9 @@ Both schemas are preserved in the merged document without conflict.
 - Only OpenAPI 3.x specs are supported (same constraint as `climate generate`).
 - `allOf` / `oneOf` / `anyOf` schema combiners are not rewritten in the
   current implementation; plain `$ref` strings are rewritten.
-- The generated CLI routes requests to the servers declared in each individual
-  spec.  If you want a true API gateway (single ingress), deploy a reverse
-  proxy in front of the services and point the generated CLI's `--server` flag
-  at it.
+- The generated CLI uses the primary merged server URL and can override it via
+  `--base-url` (or `<CLI>_BASE_URL`). If the server URL contains template
+  variables (`{region}`), the generated CLI also supports
+  `--server-var-<name>` / `<CLI>_SERVER_VAR_<NAME>` overrides.
+- If you want a true API gateway (single ingress), deploy a reverse proxy in
+  front of the services and point `--base-url` at it.

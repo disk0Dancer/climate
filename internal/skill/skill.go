@@ -89,6 +89,24 @@ func GenerateCLIPrompt(entry manifest.CLIEntry, openAPI *spec.OpenAPI, mode Mode
 	if len(openAPI.Servers) > 0 {
 		b.WriteString("Default base URL: `" + openAPI.Servers[0].URL + "` ")
 		b.WriteString("(override with `--base-url` or `" + envUpper(entry.Name) + "_BASE_URL`).\n")
+		if len(openAPI.Servers[0].Variables) > 0 {
+			varNames := make([]string, 0, len(openAPI.Servers[0].Variables))
+			for name := range openAPI.Servers[0].Variables {
+				varNames = append(varNames, name)
+			}
+			sort.Strings(varNames)
+			b.WriteString("\nServer URL variables:\n")
+			for _, name := range varNames {
+				v := openAPI.Servers[0].Variables[name]
+				flag := "--server-var-" + kebabCase(name)
+				env := envUpper(entry.Name) + "_SERVER_VAR_" + envUpper(name)
+				def := v.Default
+				if def == "" {
+					def = "(empty)"
+				}
+				b.WriteString(fmt.Sprintf("- `%s` / `%s` (default: `%s`)\n", flag, env, def))
+			}
+		}
 	}
 	b.WriteString("\n")
 
