@@ -45,7 +45,9 @@
 package mock
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -307,4 +309,77 @@ func (s *Server) Summary() string {
 		}
 	}
 	return sb.String()
+}
+
+// GenerateEventPayload builds a synthetic JSON payload for a specific OpenAPI
+// operation, intended for webhook/event simulation scenarios.
+//
+// The function prefers the operation requestBody schema (`application/json`
+// first). If no requestBody schema is available, it falls back to the first
+// successful 2xx response schema.
+func GenerateEventPayload(openAPI *spec.OpenAPI, path string, method string) (interface{}, error) {
+	if openAPI == nil {
+		return nil, errors.New("openapi spec is nil")
+	}
+	item, ok := openAPI.Paths[path]
+	if !ok {
+		return nil, fmt.Errorf("path %q not found in spec", path)
+	}
+
+	ops := item.Operations()
+	op, ok := ops[strings.ToUpper(strings.TrimSpace(method))]
+	if !ok || op == nil {
+		return nil, fmt.Errorf("method %q is not defined for path %q", method, path)
+	}
+
+	if schema := requestBodySchema(op.RequestBody); schema != nil {
+		return generateValue(schema, openAPI, 0), nil
+	}
+
+	_, body := (&Server{openAPI: openAPI}).generateResponse(op)
+	return body, nil
+}
+
+// EmitEvent sends a JSON payload as an HTTP event to targetURL using method.
+// It returns the response status code from the target endpoint.
+func EmitEvent(targetURL string, method string, payload interface{}) (int, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest(strings.ToUpper(strings.TrimSpace(method)), targetURL, bytes.NewReader(b))
+	if err != nil {
+		return 0, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req) //nolint:noctx
+	if err != nil {
+		return 0, fmt.Errorf("send event: %w", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
+func requestBodySchema(rb *spec.RequestBody) *spec.Schema {
+	if rb == nil || len(rb.Content) == 0 {
+		return nil
+	}
+	if mt, ok := rb.Content["application/json"]; ok && mt.Schema != nil {
+		return mt.Schema
+	}
+
+	contentTypes := make([]string, 0, len(rb.Content))
+	for ct := range rb.Content {
+		contentTypes = append(contentTypes, ct)
+	}
+	sort.Strings(contentTypes)
+	for _, ct := range contentTypes {
+		if mt := rb.Content[ct]; mt.Schema != nil {
+			return mt.Schema
+		}
+	}
+	return nil
 }

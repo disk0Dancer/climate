@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -266,5 +267,101 @@ func TestMock_SchemaWithRef(t *testing.T) {
 	}
 	if _, ok := obj["id"]; !ok {
 		t.Error("resolved $ref: response missing 'id'")
+	}
+}
+
+func TestGenerateEventPayload_RequestBody(t *testing.T) {
+	openAPI := &spec.OpenAPI{
+		OpenAPI: "3.0.0",
+		Info:    spec.Info{Title: "Events", Version: "1.0.0"},
+		Paths: map[string]spec.PathItem{
+			"/events/order-created": {
+				Post: &spec.Operation{
+					RequestBody: &spec.RequestBody{
+						Content: map[string]spec.MediaType{
+							"application/json": {
+								Schema: &spec.Schema{
+									Type: "object",
+									Properties: map[string]*spec.Schema{
+										"eventId": {Type: "string"},
+										"amount":  {Type: "number"},
+									},
+								},
+							},
+						},
+					},
+					Responses: map[string]spec.Response{
+						"202": {},
+					},
+				},
+			},
+		},
+	}
+
+	payload, err := mock.GenerateEventPayload(openAPI, "/events/order-created", "POST")
+	if err != nil {
+		t.Fatalf("GenerateEventPayload error: %v", err)
+	}
+	obj, ok := payload.(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload type = %T, want object", payload)
+	}
+	if _, ok := obj["eventId"]; !ok {
+		t.Error("missing eventId in generated payload")
+	}
+	if _, ok := obj["amount"]; !ok {
+		t.Error("missing amount in generated payload")
+	}
+}
+
+func TestGenerateEventPayload_FallbackToResponse(t *testing.T) {
+	payload, err := mock.GenerateEventPayload(petStoreSpec(), "/pets", "GET")
+	if err != nil {
+		t.Fatalf("GenerateEventPayload error: %v", err)
+	}
+	if reflect.TypeOf(payload).Kind() != reflect.Slice {
+		t.Fatalf("payload type = %T, want slice fallback from response schema", payload)
+	}
+}
+
+func TestGenerateEventPayload_InvalidOperation(t *testing.T) {
+	_, err := mock.GenerateEventPayload(petStoreSpec(), "/pets", "TRACE")
+	if err == nil {
+		t.Fatal("expected error for undefined method")
+	}
+}
+
+func TestEmitEvent(t *testing.T) {
+	var (
+		gotMethod      string
+		gotContentType string
+		gotBody        map[string]interface{}
+	)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotContentType = r.Header.Get("Content-Type")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer target.Close()
+
+	status, err := mock.EmitEvent(target.URL, "post", map[string]interface{}{
+		"event": "order.created",
+		"id":    "evt_1",
+	})
+	if err != nil {
+		t.Fatalf("EmitEvent error: %v", err)
+	}
+	if status != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", status, http.StatusAccepted)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if !strings.HasPrefix(gotContentType, "application/json") {
+		t.Errorf("content-type = %q, want application/json", gotContentType)
+	}
+	if gotBody["event"] != "order.created" {
+		t.Errorf("event = %v, want order.created", gotBody["event"])
 	}
 }

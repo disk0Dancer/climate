@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/disk0Dancer/climate/internal/mock"
@@ -10,8 +11,11 @@ import (
 )
 
 var (
-	mockPort    int
-	mockLatency int
+	mockPort        int
+	mockLatency     int
+	mockEmitURL     string
+	mockEventPath   string
+	mockEventMethod string
 )
 
 var mockCmd = &cobra.Command{
@@ -34,7 +38,8 @@ The spec can be a local file path or an HTTP(S) URL.
 Examples:
   climate mock ./openapi.yaml
   climate mock --port 9090 https://petstore3.swagger.io/api/v3/openapi.json
-  climate mock --latency 200 ./orders.yaml`,
+  climate mock --latency 200 ./orders.yaml
+  climate mock --emit-url http://localhost:3001/webhook --event-path /events/order-created --event-method POST ./openapi.yaml`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		specSource := args[0]
@@ -42,6 +47,24 @@ Examples:
 		openAPI, err := spec.Load(specSource)
 		if err != nil {
 			exitError("Failed to load spec", err)
+		}
+
+		if strings.TrimSpace(mockEmitURL) != "" {
+			if strings.TrimSpace(mockEventPath) == "" {
+				exitError("Missing required flag --event-path when using --emit-url", nil)
+			}
+			payload, err := mock.GenerateEventPayload(openAPI, mockEventPath, mockEventMethod)
+			if err != nil {
+				exitError("Failed to generate event payload", err)
+			}
+			statusCode, err := mock.EmitEvent(mockEmitURL, mockEventMethod, payload)
+			if err != nil {
+				exitError("Failed to emit event", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"Emitted %s event from %s to %s (status: %d)\n",
+				strings.ToUpper(mockEventMethod), mockEventPath, mockEmitURL, statusCode)
+			return nil
 		}
 
 		addr := fmt.Sprintf(":%d", mockPort)
@@ -67,5 +90,8 @@ Examples:
 func init() {
 	mockCmd.Flags().IntVar(&mockPort, "port", 8080, "TCP port to listen on")
 	mockCmd.Flags().IntVar(&mockLatency, "latency", 0, "Artificial response latency in milliseconds")
+	mockCmd.Flags().StringVar(&mockEmitURL, "emit-url", "", "Send one synthetic webhook/event payload to this URL and exit")
+	mockCmd.Flags().StringVar(&mockEventPath, "event-path", "", "OpenAPI path to use for synthetic event payload generation (required with --emit-url)")
+	mockCmd.Flags().StringVar(&mockEventMethod, "event-method", "POST", "HTTP method to use for event emission with --emit-url")
 	rootCmd.AddCommand(mockCmd)
 }

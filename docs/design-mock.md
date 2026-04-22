@@ -32,6 +32,10 @@ climate mock --port 9090 https://petstore3.swagger.io/api/v3/openapi.json
 
 # Simulate network latency (milliseconds)
 climate mock --latency 200 ./orders.yaml
+
+# Emit a synthetic event payload to a local webhook endpoint and exit
+climate mock --emit-url http://localhost:3001/webhooks/order-created \
+  --event-path /events/order-created --event-method POST ./openapi.yaml
 ```
 
 On start-up the command prints a route table and the listen address:
@@ -90,6 +94,21 @@ schemas.
 
 Pass `--latency <ms>` to add a uniform sleep before every response.  This is
 useful for testing timeout handling and UI loading states.
+
+## Event / webhook simulation
+
+For webhook-oriented integrations, `climate mock` can emit one synthetic event
+payload to a target endpoint without starting the long-running mock server:
+
+- `--emit-url` target URL to receive the event
+- `--event-path` OpenAPI path used to select the operation schema
+- `--event-method` HTTP method for the target request (default: `POST`)
+
+Payload generation strategy:
+
+1. Prefer the selected operation's `requestBody` schema (`application/json` first)
+2. Fallback to the first successful `2xx` response schema
+3. Generate synthetic JSON recursively using the same schema generator as mock responses
 
 ## Limitations
 

@@ -76,7 +76,7 @@ path or URL and `<prefix>` starts with `/`.
 ### Start local mock server
 
 ```bash
-climate mock [--port <port>] [--latency <ms>] <openapi_spec>
+climate mock [--port <port>] [--latency <ms>] [--emit-url <url> --event-path <path> [--event-method <method>]] <openapi_spec>
 ```
 
 ### Remove a generated CLI

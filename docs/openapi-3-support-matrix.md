@@ -24,8 +24,8 @@ what is partially supported, and what should be designed/implemented next.
 | `enum` | ✅ Implemented (mock) / ⚠️ partial (CLI) | Mock prefers first enum value | Add flag-level enum validation/help text |
 | `allOf`, `oneOf`, `anyOf`, `not` | ⚠️ Partial | Core flow works for simple schemas; advanced combiners not fully synthesized | Add schema normalizer for combiners |
 | `servers` and server variables | ⚠️ Partial | Primary server is used; limited variable ergonomics | Add variable interpolation flags in generated root command |
-| `callbacks` | ❌ Planned | Not mapped to CLI surface yet | Add event command model (`events subscribe`/`events trigger`) |
-| `webhooks` (3.1) | ❌ Planned | Not exposed by generator/mocks yet | Add webhook simulation and event ingestion model |
+| `callbacks` | ⚠️ Partial | Not mapped to generated CLI surface; mock can emit synthetic event payloads to target endpoints via flags | Add event command model (`events subscribe`/`events trigger`) |
+| `webhooks` (3.1) | ⚠️ Partial | Top-level webhook declarations are not yet parsed as first-class objects; mock has event emission mode for local webhook testing | Add webhook simulation and event ingestion model |
 | Links | ❌ Planned | Ignored | Add optional “follow-up command hint” output |
 | Examples (`example` / `examples`) | ⚠️ Partial | Not consistently preferred in generation | Use examples as first-class sample payload/response source |
 

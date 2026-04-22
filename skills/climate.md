@@ -67,11 +67,13 @@ climate compose https://orders.svc/openapi.json:/orders https://users.svc/openap
 ### Run a local mock server from an OpenAPI spec
 
 ```
-climate mock [--port <port>] [--latency <ms>] <openapi_spec>
+climate mock [--port <port>] [--latency <ms>] [--emit-url <url> --event-path <path> [--event-method <method>]] <openapi_spec>
 ```
 
 Starts a local simulator server that serves synthetic responses from response
 schemas in the OpenAPI spec. Useful for local development and agent testing.
+For webhook-style integrations, it can also emit one synthetic event payload to
+a target endpoint and exit.
 
 ---
 
