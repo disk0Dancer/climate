@@ -46,6 +46,7 @@ package mock
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -348,14 +349,17 @@ func EmitEvent(targetURL string, method string, payload interface{}) (int, error
 		return 0, fmt.Errorf("marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest(strings.ToUpper(strings.TrimSpace(method)), targetURL, bytes.NewReader(b))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(strings.TrimSpace(method)), targetURL, bytes.NewReader(b))
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req) //nolint:noctx
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("send event: %w", err)
 	}

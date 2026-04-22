@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -43,27 +44,38 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		specSource := args[0]
+		method := strings.ToUpper(strings.TrimSpace(mockEventMethod))
+		emitMode := strings.TrimSpace(mockEmitURL) != ""
+
+		if !emitMode && (cmd.Flags().Changed("event-path") || cmd.Flags().Changed("event-method")) {
+			exitError("--event-path and --event-method require --emit-url", nil)
+		}
+		if emitMode {
+			if strings.TrimSpace(mockEventPath) == "" {
+				exitError("Missing required flag --event-path when using --emit-url", nil)
+			}
+			if !isValidHTTPMethod(method) {
+				exitError("Invalid --event-method value", fmt.Errorf("unsupported HTTP method %q", mockEventMethod))
+			}
+		}
 
 		openAPI, err := spec.Load(specSource)
 		if err != nil {
 			exitError("Failed to load spec", err)
 		}
 
-		if strings.TrimSpace(mockEmitURL) != "" {
-			if strings.TrimSpace(mockEventPath) == "" {
-				exitError("Missing required flag --event-path when using --emit-url", nil)
-			}
-			payload, err := mock.GenerateEventPayload(openAPI, mockEventPath, mockEventMethod)
+		if emitMode {
+			payload, err := mock.GenerateEventPayload(openAPI, mockEventPath, method)
 			if err != nil {
 				exitError("Failed to generate event payload", err)
 			}
-			statusCode, err := mock.EmitEvent(mockEmitURL, mockEventMethod, payload)
+			statusCode, err := mock.EmitEvent(mockEmitURL, method, payload)
 			if err != nil {
 				exitError("Failed to emit event", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(),
 				"Emitted %s event from %s to %s (status: %d)\n",
-				strings.ToUpper(mockEventMethod), mockEventPath, mockEmitURL, statusCode)
+				method, mockEventPath, mockEmitURL, statusCode)
 			return nil
 		}
 
@@ -94,4 +106,21 @@ func init() {
 	mockCmd.Flags().StringVar(&mockEventPath, "event-path", "", "OpenAPI path to use for synthetic event payload generation (required with --emit-url)")
 	mockCmd.Flags().StringVar(&mockEventMethod, "event-method", "POST", "HTTP method to use for event emission with --emit-url")
 	rootCmd.AddCommand(mockCmd)
+}
+
+func isValidHTTPMethod(method string) bool {
+	switch method {
+	case http.MethodGet,
+		http.MethodHead,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodOptions,
+		http.MethodTrace,
+		http.MethodConnect:
+		return true
+	default:
+		return false
+	}
 }
