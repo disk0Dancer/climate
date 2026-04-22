@@ -70,7 +70,7 @@ Modes:
 			return nil
 		}
 
-		fmt.Fprint(cmd.OutOrStdout(), prompt)
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), prompt)
 		return nil
 	},
 }
@@ -86,7 +86,7 @@ This is the content of skills/climate.md shipped with climate.
 An LLM agent can read it to learn how to use climate and self-register
 it as the climate.generator skill.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Fprint(cmd.OutOrStdout(), skills.ClimateMD)
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), skills.ClimateMD)
 		return nil
 	},
 }

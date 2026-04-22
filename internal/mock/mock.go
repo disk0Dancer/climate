@@ -171,7 +171,7 @@ func (s *Server) makeHandler(path string, item spec.PathItem) http.HandlerFunc {
 		w.WriteHeader(statusCode)
 		if encErr := json.NewEncoder(w).Encode(body); encErr != nil {
 			// The header is already written; log to stderr as best effort.
-			fmt.Fprintf(w, `{"error":"response encoding failed"}`)
+			_, _ = fmt.Fprintf(w, `{"error":"response encoding failed"}`)
 		}
 	}
 }
@@ -364,7 +364,9 @@ func EmitEvent(targetURL string, method string, payload interface{}) (int, error
 	if err != nil {
 		return 0, fmt.Errorf("send event: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	return resp.StatusCode, nil
 }
 

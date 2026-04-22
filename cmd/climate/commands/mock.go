@@ -79,7 +79,7 @@ Examples:
 			if err != nil {
 				exitError("Failed to emit event", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"Emitted %s event from %s to %s (status: %d)\n",
 				method, mockEventPath, mockEmitURL, statusCode)
 			return nil
@@ -89,14 +89,14 @@ Examples:
 		latency := time.Duration(mockLatency) * time.Millisecond
 		s := mock.NewServer(openAPI, addr, latency)
 
-		fmt.Fprintf(cmd.OutOrStdout(), "Mock server for %q listening on http://localhost%s\n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Mock server for %q listening on http://localhost%s\n",
 			openAPI.Info.Title, addr)
 		if mockLatency > 0 {
-			fmt.Fprintf(cmd.OutOrStdout(), "Artificial latency: %dms\n", mockLatency)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Artificial latency: %dms\n", mockLatency)
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "\nRoutes:")
-		fmt.Fprint(cmd.OutOrStdout(), s.Summary())
-		fmt.Fprintln(cmd.OutOrStdout(), "\nPress Ctrl+C to stop.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nRoutes:")
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), s.Summary())
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nPress Ctrl+C to stop.")
 
 		if err := s.ListenAndServe(); err != nil {
 			exitError("Mock server error", err)
