@@ -35,6 +35,20 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59
+
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
 
