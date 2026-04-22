@@ -85,6 +85,11 @@ func writeOutput(v interface{}) {
 	}
 }
 
+// writeJSON prints v as indented JSON to stdout.
+func writeJSON(v interface{}) {
+	writeOutput(v)
+}
+
 // exitWithError prints an error as JSON to stderr and exits non-zero.
 func exitWithError(statusCode int, code, message string, raw interface{}) {
 	type errObj struct {

@@ -112,13 +112,13 @@ var eventsListenCmd = &cobra.Command{
 		timestampHeader := eventlistener.ResolveString(
 			cmd.Flags().Changed("timestamp-header"), eventsListenTimestampHeader,
 			store, "events.timestamp_header",
-			def.TimestampHeader,
+			def.SignatureTimestampHeader,
 			"X-Signature-Timestamp",
 		)
 		includeTimestamp := eventlistener.ResolveBool(
 			cmd.Flags().Changed("include-timestamp"), eventsListenIncludeTimestamp,
 			store, "events.include_timestamp",
-			def.IncludeTimestamp,
+			def.SignatureIncludeTimestamp,
 			false,
 		)
 		tunnel := eventlistener.ResolveString(
@@ -238,13 +238,13 @@ var eventsEmitCmd = &cobra.Command{
 		timestampHeader := eventlistener.ResolveString(
 			cmd.Flags().Changed("timestamp-header"), eventsEmitTimestampHeader,
 			store, "events.timestamp_header",
-			def.TimestampHeader,
+			def.SignatureTimestampHeader,
 			"X-Signature-Timestamp",
 		)
 		includeTimestamp := eventlistener.ResolveBool(
 			cmd.Flags().Changed("include-timestamp"), eventsEmitIncludeTimestamp,
 			store, "events.include_timestamp",
-			def.IncludeTimestamp,
+			def.SignatureIncludeTimestamp,
 			false,
 		)
 
