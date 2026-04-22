@@ -379,6 +379,7 @@ func requestBodySchema(rb *spec.RequestBody) *spec.Schema {
 	for ct := range rb.Content {
 		contentTypes = append(contentTypes, ct)
 	}
+	// Keep media-type fallback deterministic; map iteration order is random.
 	sort.Strings(contentTypes)
 	for _, ct := range contentTypes {
 		if mt := rb.Content[ct]; mt.Schema != nil {
