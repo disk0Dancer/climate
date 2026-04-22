@@ -157,6 +157,35 @@ func TestGenerateCLIPromptBodyFlags(t *testing.T) {
 	}
 }
 
+func TestGenerateCLIPromptServerVariables(t *testing.T) {
+	entry := manifest.CLIEntry{Name: "petstore", Version: "1.0.0"}
+	openAPI := sampleOpenAPI()
+	openAPI.Servers = []spec.Server{
+		{
+			URL: "https://{region}.api.example.com/{basePath}",
+			Variables: map[string]spec.ServerVariable{
+				"region":   {Default: "eu"},
+				"basePath": {Default: "v1"},
+			},
+		},
+	}
+
+	prompt := skill.GenerateCLIPrompt(entry, openAPI, skill.ModeFull)
+
+	if !strings.Contains(prompt, "--server-var-region") {
+		t.Error("prompt should document --server-var-region")
+	}
+	if !strings.Contains(prompt, "--server-var-base-path") {
+		t.Error("prompt should document --server-var-base-path")
+	}
+	if !strings.Contains(prompt, "PETSTORE_SERVER_VAR_REGION") {
+		t.Error("prompt should mention PETSTORE_SERVER_VAR_REGION env var")
+	}
+	if !strings.Contains(prompt, "PETSTORE_SERVER_VAR_BASE_PATH") {
+		t.Error("prompt should mention PETSTORE_SERVER_VAR_BASE_PATH env var")
+	}
+}
+
 func TestGenerateCLIPromptRequiredParam(t *testing.T) {
 	entry := manifest.CLIEntry{Name: "petstore", Version: "1.0.0"}
 	openAPI := sampleOpenAPI()

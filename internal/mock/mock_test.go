@@ -364,3 +364,56 @@ func TestEmitEvent(t *testing.T) {
 		t.Errorf("event = %v, want order.created", gotBody["event"])
 	}
 }
+
+func TestGenerateAndEmitEventToEndpoint(t *testing.T) {
+	openAPI := &spec.OpenAPI{
+		OpenAPI: "3.0.0",
+		Info:    spec.Info{Title: "Events", Version: "1.0.0"},
+		Paths: map[string]spec.PathItem{
+			"/events/order-created": {
+				Post: &spec.Operation{
+					RequestBody: &spec.RequestBody{
+						Content: map[string]spec.MediaType{
+							"application/json": {
+								Schema: &spec.Schema{
+									Type: "object",
+									Properties: map[string]*spec.Schema{
+										"eventId": {Type: "string"},
+										"amount":  {Type: "number"},
+									},
+								},
+							},
+						},
+					},
+					Responses: map[string]spec.Response{"202": {}},
+				},
+			},
+		},
+	}
+
+	var gotBody map[string]interface{}
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer target.Close()
+
+	payload, err := mock.GenerateEventPayload(openAPI, "/events/order-created", http.MethodPost)
+	if err != nil {
+		t.Fatalf("GenerateEventPayload error: %v", err)
+	}
+
+	status, err := mock.EmitEvent(target.URL, http.MethodPost, payload)
+	if err != nil {
+		t.Fatalf("EmitEvent error: %v", err)
+	}
+	if status != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", status, http.StatusAccepted)
+	}
+	if _, ok := gotBody["eventId"]; !ok {
+		t.Error("endpoint payload missing eventId")
+	}
+	if _, ok := gotBody["amount"]; !ok {
+		t.Error("endpoint payload missing amount")
+	}
+}

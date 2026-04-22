@@ -135,6 +135,45 @@ paths:
 	}
 }
 
+func TestParse_ServerVariables(t *testing.T) {
+	yamlSpec := `
+openapi: "3.0.0"
+info:
+  title: "Server Vars API"
+  version: "1.0.0"
+servers:
+  - url: "https://{region}.api.example.com/{basePath}"
+    variables:
+      region:
+        default: "eu"
+        enum: ["eu", "us"]
+      basePath:
+        default: "v1"
+paths:
+  /ping: {}
+`
+	s, err := spec.Parse("server-vars.yaml", []byte(yamlSpec))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(s.Servers) != 1 {
+		t.Fatalf("servers count = %d, want 1", len(s.Servers))
+	}
+	srv := s.Servers[0]
+	if srv.URL != "https://{region}.api.example.com/{basePath}" {
+		t.Fatalf("server url = %q", srv.URL)
+	}
+	if got := srv.Variables["region"].Default; got != "eu" {
+		t.Errorf("region default = %q, want %q", got, "eu")
+	}
+	if got := len(srv.Variables["region"].Enum); got != 2 {
+		t.Errorf("region enum len = %d, want 2", got)
+	}
+	if got := srv.Variables["basePath"].Default; got != "v1" {
+		t.Errorf("basePath default = %q, want %q", got, "v1")
+	}
+}
+
 func TestIsURL(t *testing.T) {
 	tests := []struct {
 		input string
@@ -188,5 +227,23 @@ func TestPathItemOperations(t *testing.T) {
 	}
 	if ops["POST"] != postOp {
 		t.Error("POST operation not found")
+	}
+}
+
+func TestServerVariableEnvName(t *testing.T) {
+	tests := []struct {
+		name     string
+		variable string
+		want     string
+	}{
+		{name: "PETSTORE", variable: "region", want: "PETSTORE_SERVER_VAR_REGION"},
+		{name: "PETSTORE", variable: "basePath", want: "PETSTORE_SERVER_VAR_BASE_PATH"},
+		{name: "MY_API", variable: "region-id", want: "MY_API_SERVER_VAR_REGION_ID"},
+	}
+	for _, tt := range tests {
+		got := spec.ServerVariableEnvName(tt.name, tt.variable)
+		if got != tt.want {
+			t.Errorf("ServerVariableEnvName(%q,%q) = %q, want %q", tt.name, tt.variable, got, tt.want)
+		}
 	}
 }

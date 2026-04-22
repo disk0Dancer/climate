@@ -224,6 +224,9 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	var authFlagInits strings.Builder
 	var authHeadersBody strings.Builder
 	var authQueryBody strings.Builder
+	var serverVarDecls strings.Builder
+	var serverVarFlagInits strings.Builder
+	var serverVarResolveBody strings.Builder
 
 	seenVars := map[string]bool{}
 
@@ -231,6 +234,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	needsBase64 := false
 	needsNetHTTP := false
 	needsIOUtil := false
+	needsStrings := false
 
 	for _, scheme := range schemes {
 		switch scheme.Type {
@@ -380,6 +384,49 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 		}
 	}
 
+	baseURL := ""
+	serverVariables := map[string]spec.ServerVariable{}
+	if len(openAPI.Servers) > 0 {
+		baseURL = openAPI.Servers[0].URL
+		serverVariables = openAPI.Servers[0].Variables
+	}
+
+	serverVarKeys := make([]string, 0, len(serverVariables))
+	for name := range serverVariables {
+		serverVarKeys = append(serverVarKeys, name)
+	}
+	sort.Strings(serverVarKeys)
+	for _, name := range serverVarKeys {
+		sv := serverVariables[name]
+		varName := safeIdent("serverVar" + toPascal(name))
+		flagName := "server-var-" + kebabCase(name)
+		envVar := spec.ServerVariableEnvName(cliUpper, name)
+		desc := sv.Description
+		if desc == "" {
+			desc = "Override server URL variable {" + name + "}"
+		}
+		serverVarDecls.WriteString(fmt.Sprintf("\t%s string\n", varName))
+		serverVarFlagInits.WriteString(fmt.Sprintf(
+			"\trootCmd.PersistentFlags().StringVar(&%s, %q, \"\", %q)\n",
+			varName, flagName, desc,
+		))
+		serverVarResolveBody.WriteString(fmt.Sprintf(`
+	{
+		v := %s
+		if v == "" {
+			v = os.Getenv(%q)
+		}
+		if v == "" {
+			v = %q
+		}
+		u = strings.ReplaceAll(u, %q, v)
+	}
+`, varName, envVar, sv.Default, "{"+name+"}"))
+	}
+	if len(serverVarKeys) > 0 {
+		needsStrings = true
+	}
+
 	// Build the import list
 	var imports strings.Builder
 	imports.WriteString("\t\"encoding/json\"\n")
@@ -390,6 +437,8 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	if needsNetHTTP {
 		imports.WriteString("\t\"net/http\"\n")
 		imports.WriteString("\t\"net/url\"\n")
+	}
+	if needsNetHTTP || needsStrings {
 		imports.WriteString("\t\"strings\"\n")
 	}
 	imports.WriteString("\t\"os\"\n")
@@ -398,13 +447,14 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	}
 	imports.WriteString("\n\t\"github.com/spf13/cobra\"\n")
 
-	baseURL := ""
-	if len(openAPI.Servers) > 0 {
-		baseURL = openAPI.Servers[0].URL
-	}
 	description := openAPI.Info.Description
 	if description == "" {
 		description = openAPI.Info.Title + " CLI"
+	}
+
+	defaultBaseURLResolver := "\treturn defaultBaseURLTemplate\n"
+	if len(serverVarKeys) > 0 {
+		defaultBaseURLResolver = "	u := defaultBaseURLTemplate\n" + serverVarResolveBody.String() + "\treturn u\n"
 	}
 
 	// OAuth2 helper function — only emitted when needed
@@ -459,9 +509,9 @@ import (
 var (
 	outputFormat string
 	baseURL      string
-%s)
+%s%s)
 
-const defaultBaseURL = %q
+const defaultBaseURLTemplate = %q
 
 var version = %q
 
@@ -479,7 +529,7 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "output", "json", "Output format: json|table|raw")
 	rootCmd.PersistentFlags().StringVar(&baseURL, "base-url", "", "Override API base URL")
-%s}
+%s%s}
 
 func getBaseURL() string {
 	if baseURL != "" {
@@ -488,7 +538,11 @@ func getBaseURL() string {
 	if v := os.Getenv(%q); v != "" {
 		return v
 	}
-	return defaultBaseURL
+	return resolveDefaultBaseURL()
+}
+
+func resolveDefaultBaseURL() string {
+%s
 }
 
 // getAuthHeaders returns HTTP headers required for authentication.
@@ -533,16 +587,19 @@ func exitWithError(statusCode int, code, message string, raw interface{}) {
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(obj)
 	os.Exit(1)
-}
+	}
 %s`,
 		imports.String(),
 		authVarDecls.String(),
+		serverVarDecls.String(),
 		baseURL,
 		openAPI.Info.Version,
 		cliName,
 		description,
 		authFlagInits.String(),
+		serverVarFlagInits.String(),
 		cliUpper+"_BASE_URL",
+		defaultBaseURLResolver,
 		authHeadersBody.String(),
 		authQueryBody.String(),
 		oauth2Helper,
@@ -902,7 +959,7 @@ func (c *Client) Do(method, path string, query map[string]string, body []byte, e
 		Raw:        raw,
 	}, nil
 }
-`, baseURL)
+	`, baseURL)
 }
 
 // --- Naming helpers ---
