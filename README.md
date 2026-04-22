@@ -59,6 +59,8 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 | Command | Purpose |
 |---|---|
 | `generate` | Create CLI from OpenAPI spec |
+| `compose` | Merge multiple specs (with prefixes) into one facade CLI |
+| `mock` | Run local mock HTTP server from OpenAPI spec |
 | `list` | Show registered CLIs |
 | `remove` | Delete a generated CLI |
 | `upgrade` | Regenerate from updated spec |
@@ -69,6 +71,9 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 
 - [Site](https://disk0dancer.github.io/climate/)
 - [LLM index](https://disk0dancer.github.io/climate/llms.txt)
+- [Compose design](docs/design-compose.md)
+- [Mock design](docs/design-mock.md)
+- [OpenAPI 3.0 support matrix](docs/openapi-3-support-matrix.md)
 
 ## Development
 

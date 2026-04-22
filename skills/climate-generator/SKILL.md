@@ -20,15 +20,19 @@ clients from OpenAPI specifications and can emit Markdown prompts for agent skil
 - The user has an OpenAPI 3.x URL or file and wants a CLI quickly.
 - The user wants a human-usable API client rather than writing SDK glue code.
 - The user wants to turn a generated CLI into a reusable agent skill.
+- The user wants to compose multiple microservice specs into one facade CLI.
+- The user wants a local OpenAPI simulator (mock server) for testing.
 - The user wants to list, remove, or upgrade a previously generated CLI.
 
 ## Core workflow
 
 1. Generate a CLI from the provided spec.
-2. Capture the resulting `cli_name`, `binary_path`, and `source_dir`.
-3. If the user wants agent integration, run `climate skill generate <cli-name>`.
-4. If the user wants the CLI managed on GitHub, run `climate publish <cli-name>`.
-5. Follow the generated instructions from that Markdown prompt.
+2. If user provides multiple specs, use `climate compose` instead of `climate generate`.
+3. Capture the resulting `cli_name`, `binary_path`, and `source_dir`.
+4. If the user wants agent integration, run `climate skill generate <cli-name>`.
+5. If the user needs sandbox/simulator behavior, run `climate mock <openapi_spec>`.
+6. If the user wants the CLI managed on GitHub, run `climate publish <cli-name>`.
+7. Follow the generated instructions from that Markdown prompt.
 
 ## Commands
 
@@ -58,6 +62,21 @@ Success output is JSON:
 
 ```bash
 climate list
+```
+
+### Compose multiple OpenAPI specs into one CLI
+
+```bash
+climate compose [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] [--title <title>] [--api-version <version>] [--description <text>] <spec1>:<prefix1> [<spec2>:<prefix2> ...]
+```
+
+Each positional argument is `<spec>:<prefix>` where `<spec>` can be a local
+path or URL and `<prefix>` starts with `/`.
+
+### Start local mock server
+
+```bash
+climate mock [--port <port>] [--latency <ms>] [--emit-url <url> --event-path <path> [--event-method <method>]] <openapi_spec>
 ```
 
 ### Remove a generated CLI
@@ -99,6 +118,18 @@ Generate a CLI:
 
 ```bash
 climate generate --name petstore https://petstore3.swagger.io/api/v3/openapi.json
+```
+
+Compose two service specs into one facade CLI:
+
+```bash
+climate compose orders.yaml:/api/orders users.yaml:/api/users --name gateway
+```
+
+Run a local mock server:
+
+```bash
+climate mock --port 9090 --latency 150 https://petstore3.swagger.io/api/v3/openapi.json
 ```
 
 Generate a compact skill prompt for that CLI:

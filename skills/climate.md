@@ -9,6 +9,8 @@ so you can self-register those CLIs as new skills.
 ## What you can do
 
 - Generate a typed Go CLI from any OpenAPI spec (URL or local file).
+- Compose several OpenAPI specs into one facade CLI with per-spec path prefixes.
+- Run a local OpenAPI-based mock HTTP server for simulator/sandbox workflows.
 - List all CLIs you have already generated.
 - Get a plain-text skill prompt for any generated CLI so you can self-register it.
 - Publish a generated CLI into a GitHub repository with lifecycle bootstrap.
@@ -43,6 +45,35 @@ climate generate [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] <o
   "openapi_hash":"<sha256 of the spec>"
 }
 ```
+
+---
+
+### Compose multiple specs into one facade CLI
+
+```
+climate compose [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] [--title <title>] [--api-version <version>] [--description <text>] <spec1>:<prefix1> [<spec2>:<prefix2> ...]
+```
+
+Use this for multi-microservice setups where each service has its own spec.
+Each input is `<spec>:<prefix>`, for example:
+
+```
+climate compose orders.yaml:/api/orders users.yaml:/api/users
+climate compose https://orders.svc/openapi.json:/orders https://users.svc/openapi.json:/users
+```
+
+---
+
+### Run a local mock server from an OpenAPI spec
+
+```
+climate mock [--port <port>] [--latency <ms>] [--emit-url <url> --event-path <path> [--event-method <method>]] <openapi_spec>
+```
+
+Starts a local simulator server that serves synthetic responses from response
+schemas in the OpenAPI spec. Useful for local development and agent testing.
+For webhook-style integrations, it can also emit one synthetic event payload to
+a target endpoint and exit.
 
 ---
 
@@ -130,11 +161,13 @@ On error commands exit non-zero and print to stderr:
 ## Typical agent workflow
 
 1. User provides an OpenAPI spec URL or file path.
-2. Run `climate generate <url>` → note the `cli_name` in the JSON response.
-3. Run `climate skill generate <cli_name>` → read the plain-text prompt it prints.
-4. Run `climate publish <cli_name>` if the user wants the generated CLI managed on GitHub.
-5. Follow the self-registration instructions inside that prompt.
-6. Use the new CLI skill for all subsequent tasks that involve that API.
+2. If it is one spec, run `climate generate <url>`; if many microservices, run `climate compose <spec:prefix>...`.
+3. Note the `cli_name` in the JSON response.
+4. Run `climate skill generate <cli_name>` → read the plain-text prompt it prints.
+5. Optional: run `climate mock <openapi_spec>` for local simulator/sandbox testing.
+6. Run `climate publish <cli_name>` if the user wants the generated CLI managed on GitHub.
+7. Follow the self-registration instructions inside that prompt.
+8. Use the new CLI skill for all subsequent tasks that involve that API.
 
 ---
 
