@@ -229,3 +229,21 @@ func TestPathItemOperations(t *testing.T) {
 		t.Error("POST operation not found")
 	}
 }
+
+func TestServerVariableEnvName(t *testing.T) {
+	tests := []struct {
+		name     string
+		variable string
+		want     string
+	}{
+		{name: "PETSTORE", variable: "region", want: "PETSTORE_SERVER_VAR_REGION"},
+		{name: "PETSTORE", variable: "basePath", want: "PETSTORE_SERVER_VAR_BASE_PATH"},
+		{name: "MY_API", variable: "region-id", want: "MY_API_SERVER_VAR_REGION_ID"},
+	}
+	for _, tt := range tests {
+		got := spec.ServerVariableEnvName(tt.name, tt.variable)
+		if got != tt.want {
+			t.Errorf("ServerVariableEnvName(%q,%q) = %q, want %q", tt.name, tt.variable, got, tt.want)
+		}
+	}
+}

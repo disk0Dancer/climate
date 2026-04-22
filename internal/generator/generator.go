@@ -400,7 +400,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 		sv := serverVariables[name]
 		varName := safeIdent("serverVar" + toPascal(name))
 		flagName := "server-var-" + kebabCase(name)
-		envVar := serverVariableEnvName(cliUpper, name)
+		envVar := spec.ServerVariableEnvName(cliUpper, name)
 		desc := sv.Description
 		if desc == "" {
 			desc = "Override server URL variable {" + name + "}"
@@ -1042,40 +1042,6 @@ func toPascal(s string) string {
 		}
 	}
 	return result.String()
-}
-
-func serverVariableEnvName(cliUpper, name string) string {
-	var b strings.Builder
-	prevLowerOrDigit := false
-	prevUnderscore := false
-
-	for _, r := range name {
-		switch {
-		case unicode.IsUpper(r):
-			if prevLowerOrDigit && !prevUnderscore && b.Len() > 0 {
-				b.WriteRune('_')
-			}
-			b.WriteRune(r)
-			prevLowerOrDigit = false
-			prevUnderscore = false
-		case unicode.IsLower(r) || unicode.IsDigit(r):
-			b.WriteRune(unicode.ToUpper(r))
-			prevLowerOrDigit = true
-			prevUnderscore = false
-		default:
-			if !prevUnderscore && b.Len() > 0 {
-				b.WriteRune('_')
-				prevUnderscore = true
-			}
-			prevLowerOrDigit = false
-		}
-	}
-
-	suffix := strings.Trim(b.String(), "_")
-	if suffix == "" {
-		suffix = "VAR"
-	}
-	return cliUpper + "_SERVER_VAR_" + suffix
 }
 
 // camelCase converts a string to camelCase.
