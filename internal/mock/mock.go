@@ -360,8 +360,7 @@ func EmitEvent(targetURL string, method string, payload interface{}) (int, error
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("send event: %w", err)
 	}
