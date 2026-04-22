@@ -3,13 +3,21 @@ package spec
 
 // OpenAPI represents the top-level OpenAPI document.
 type OpenAPI struct {
-	OpenAPI    string                `json:"openapi"    yaml:"openapi"`
-	Info       Info                  `json:"info"       yaml:"info"`
-	Servers    []Server              `json:"servers"    yaml:"servers"`
-	Paths      map[string]PathItem   `json:"paths"      yaml:"paths"`
-	Components Components            `json:"components" yaml:"components"`
-	Security   []SecurityRequirement `json:"security"   yaml:"security"`
-	Tags       []Tag                 `json:"tags"       yaml:"tags"`
+	OpenAPI                           string                `json:"openapi"    yaml:"openapi"`
+	Info                              Info                  `json:"info"       yaml:"info"`
+	Servers                           []Server              `json:"servers"    yaml:"servers"`
+	Paths                             map[string]PathItem   `json:"paths"      yaml:"paths"`
+	Webhooks                          map[string]PathItem   `json:"webhooks"   yaml:"webhooks"`
+	Components                        Components            `json:"components" yaml:"components"`
+	Security                          []SecurityRequirement `json:"security"   yaml:"security"`
+	Tags                              []Tag                 `json:"tags"       yaml:"tags"`
+	XClimateEventName                 string                `json:"x-climate-event-name" yaml:"x-climate-event-name"`
+	XClimateEventPath                 string                `json:"x-climate-event-path" yaml:"x-climate-event-path"`
+	XClimateSignatureMode             string                `json:"x-climate-signature-mode" yaml:"x-climate-signature-mode"`
+	XClimateSignatureHeader           string                `json:"x-climate-signature-header" yaml:"x-climate-signature-header"`
+	XClimateSignatureAlgorithm        string                `json:"x-climate-signature-algorithm" yaml:"x-climate-signature-algorithm"`
+	XClimateSignatureIncludeTimestamp bool                  `json:"x-climate-signature-include-timestamp" yaml:"x-climate-signature-include-timestamp"`
+	XClimateSignatureTimestampHeader  string                `json:"x-climate-signature-timestamp-header" yaml:"x-climate-signature-timestamp-header"`
 }
 
 // Info holds API metadata.
@@ -41,13 +49,20 @@ type Tag struct {
 
 // PathItem holds all operations for a path.
 type PathItem struct {
-	Get     *Operation `json:"get"     yaml:"get"`
-	Post    *Operation `json:"post"    yaml:"post"`
-	Put     *Operation `json:"put"     yaml:"put"`
-	Patch   *Operation `json:"patch"   yaml:"patch"`
-	Delete  *Operation `json:"delete"  yaml:"delete"`
-	Head    *Operation `json:"head"    yaml:"head"`
-	Options *Operation `json:"options" yaml:"options"`
+	Get                               *Operation `json:"get"     yaml:"get"`
+	Post                              *Operation `json:"post"    yaml:"post"`
+	Put                               *Operation `json:"put"     yaml:"put"`
+	Patch                             *Operation `json:"patch"   yaml:"patch"`
+	Delete                            *Operation `json:"delete"  yaml:"delete"`
+	Head                              *Operation `json:"head"    yaml:"head"`
+	Options                           *Operation `json:"options" yaml:"options"`
+	XClimateEventName                 string     `json:"x-climate-event-name" yaml:"x-climate-event-name"`
+	XClimateEventPath                 string     `json:"x-climate-event-path" yaml:"x-climate-event-path"`
+	XClimateSignatureMode             string     `json:"x-climate-signature-mode" yaml:"x-climate-signature-mode"`
+	XClimateSignatureHeader           string     `json:"x-climate-signature-header" yaml:"x-climate-signature-header"`
+	XClimateSignatureAlgorithm        string     `json:"x-climate-signature-algorithm" yaml:"x-climate-signature-algorithm"`
+	XClimateSignatureIncludeTimestamp bool       `json:"x-climate-signature-include-timestamp" yaml:"x-climate-signature-include-timestamp"`
+	XClimateSignatureTimestampHeader  string     `json:"x-climate-signature-timestamp-header" yaml:"x-climate-signature-timestamp-header"`
 }
 
 // Operations returns all non-nil operations with their HTTP method.
@@ -79,16 +94,27 @@ func (pi PathItem) Operations() map[string]*Operation {
 
 // Operation represents an OpenAPI operation.
 type Operation struct {
-	OperationID string                `json:"operationId" yaml:"operationId"`
-	Summary     string                `json:"summary"     yaml:"summary"`
-	Description string                `json:"description" yaml:"description"`
-	Tags        []string              `json:"tags"        yaml:"tags"`
-	Parameters  []Parameter           `json:"parameters"  yaml:"parameters"`
-	RequestBody *RequestBody          `json:"requestBody" yaml:"requestBody"`
-	Responses   map[string]Response   `json:"responses"   yaml:"responses"`
-	Security    []SecurityRequirement `json:"security"    yaml:"security"`
-	Deprecated  bool                  `json:"deprecated"  yaml:"deprecated"`
+	OperationID                       string                `json:"operationId" yaml:"operationId"`
+	Summary                           string                `json:"summary"     yaml:"summary"`
+	Description                       string                `json:"description" yaml:"description"`
+	Tags                              []string              `json:"tags"        yaml:"tags"`
+	Parameters                        []Parameter           `json:"parameters"  yaml:"parameters"`
+	RequestBody                       *RequestBody          `json:"requestBody" yaml:"requestBody"`
+	Responses                         map[string]Response   `json:"responses"   yaml:"responses"`
+	Callbacks                         map[string]Callback   `json:"callbacks"   yaml:"callbacks"`
+	Security                          []SecurityRequirement `json:"security"    yaml:"security"`
+	Deprecated                        bool                  `json:"deprecated"  yaml:"deprecated"`
+	XClimateEventName                 string                `json:"x-climate-event-name" yaml:"x-climate-event-name"`
+	XClimateEventPath                 string                `json:"x-climate-event-path" yaml:"x-climate-event-path"`
+	XClimateSignatureMode             string                `json:"x-climate-signature-mode" yaml:"x-climate-signature-mode"`
+	XClimateSignatureHeader           string                `json:"x-climate-signature-header" yaml:"x-climate-signature-header"`
+	XClimateSignatureAlgorithm        string                `json:"x-climate-signature-algorithm" yaml:"x-climate-signature-algorithm"`
+	XClimateSignatureIncludeTimestamp bool                  `json:"x-climate-signature-include-timestamp" yaml:"x-climate-signature-include-timestamp"`
+	XClimateSignatureTimestampHeader  string                `json:"x-climate-signature-timestamp-header" yaml:"x-climate-signature-timestamp-header"`
 }
+
+// Callback maps runtime expressions to callback path items.
+type Callback map[string]PathItem
 
 // Parameter represents an OpenAPI parameter.
 type Parameter struct {

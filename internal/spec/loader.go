@@ -68,8 +68,8 @@ func Validate(spec *OpenAPI) error {
 	if spec.Info.Version == "" {
 		return &ValidationError{Message: "missing required field: info.version"}
 	}
-	if len(spec.Paths) == 0 {
-		return &ValidationError{Message: "spec has no paths defined"}
+	if len(spec.Paths) == 0 && len(spec.Webhooks) == 0 {
+		return &ValidationError{Message: "spec has no paths or webhooks defined"}
 	}
 	return nil
 }
@@ -105,8 +105,48 @@ func resolveParameterRefs(spec *OpenAPI) {
 					op.Parameters[i] = resolved
 				}
 			}
+			resolveCallbackParameterRefs(spec, op)
 		}
 		_ = pathKey
+	}
+
+	for _, pi := range spec.Webhooks {
+		for _, op := range pi.Operations() {
+			for i, p := range op.Parameters {
+				if p.Ref == "" {
+					continue
+				}
+				if !strings.HasPrefix(p.Ref, prefix) {
+					continue
+				}
+				name := strings.TrimPrefix(p.Ref, prefix)
+				if resolved, ok := spec.Components.Parameters[name]; ok {
+					op.Parameters[i] = resolved
+				}
+			}
+		}
+	}
+}
+
+func resolveCallbackParameterRefs(spec *OpenAPI, op *Operation) {
+	const prefix = "#/components/parameters/"
+	for _, callback := range op.Callbacks {
+		for _, item := range callback {
+			for _, callbackOp := range item.Operations() {
+				for i, p := range callbackOp.Parameters {
+					if p.Ref == "" {
+						continue
+					}
+					if !strings.HasPrefix(p.Ref, prefix) {
+						continue
+					}
+					name := strings.TrimPrefix(p.Ref, prefix)
+					if resolved, ok := spec.Components.Parameters[name]; ok {
+						callbackOp.Parameters[i] = resolved
+					}
+				}
+			}
+		}
 	}
 }
 

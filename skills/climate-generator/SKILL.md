@@ -22,7 +22,10 @@ clients from OpenAPI specifications and can emit Markdown prompts for agent skil
 - The user wants to turn a generated CLI into a reusable agent skill.
 - The user wants to compose multiple microservice specs into one facade CLI.
 - The user wants a local OpenAPI simulator (mock server) for testing.
+- The user wants the generated CLI to receive or emit webhook callbacks itself.
+- The user wants shell completion for climate itself.
 - The user wants to list, remove, or upgrade a previously generated CLI.
+- The user wants to uninstall climate itself and clean up local climate-managed artifacts.
 
 ## Core workflow
 
@@ -31,8 +34,9 @@ clients from OpenAPI specifications and can emit Markdown prompts for agent skil
 3. Capture the resulting `cli_name`, `binary_path`, and `source_dir`.
 4. If the user wants agent integration, run `climate skill generate <cli-name>`.
 5. If the user needs sandbox/simulator behavior, run `climate mock <openapi_spec>`.
-6. If the user wants the CLI managed on GitHub, run `climate publish <cli-name>`.
-7. Follow the generated instructions from that Markdown prompt.
+6. If the user wants shell completion for climate itself, run `climate completion install --shell <shell>`.
+7. If the user wants the CLI managed on GitHub, run `climate publish <cli-name>`.
+8. Follow the generated instructions from that Markdown prompt.
 
 ## Commands
 
@@ -58,6 +62,25 @@ Success output is JSON:
 }
 ```
 
+Generated CLIs also include config plus spec-aware event commands:
+
+```bash
+<cli-name> events list
+<cli-name> config list
+<cli-name> config set <key> <value>
+<cli-name> config get <key>
+<cli-name> config unset <key>
+<cli-name> config profiles list
+<cli-name> config profiles create <name>
+<cli-name> config profiles use <name>
+<cli-name> config set --secret events.signing_secret <value>
+<cli-name> auth login [--scheme <name>]
+<cli-name> auth status
+<cli-name> auth logout [--scheme <name>]
+<cli-name> events listen [event-name] [--host 127.0.0.1] [--port 8081] [--path /] [--tunnel none|auto|cloudflared] [--signature-mode none|hmac]
+<cli-name> events emit <event-name> --target-url <url> [--data-json <json>] [--data-file <path>] [--signature-mode none|hmac]
+```
+
 ### List generated CLIs
 
 ```bash
@@ -79,16 +102,30 @@ path or URL and `<prefix>` starts with `/`.
 climate mock [--port <port>] [--latency <ms>] [--emit-url <url> --event-path <path> [--event-method <method>]] <openapi_spec>
 ```
 
+### Generate or install shell completions
+
+```bash
+climate completion bash|zsh|fish|powershell
+climate completion install [--shell bash|zsh|fish|powershell]
+climate completion uninstall [--shell bash|zsh|fish|powershell]
+```
+
 ### Remove a generated CLI
 
 ```bash
-climate remove [--purge-sources] <cli-name>
+climate remove [--purge-sources] [--yes] <cli-name>
 ```
 
 ### Upgrade a generated CLI
 
 ```bash
 climate upgrade [--openapi <spec>] <cli-name>
+```
+
+### Uninstall climate itself
+
+```bash
+climate uninstall [--full] [--yes]
 ```
 
 ### Generate a skill prompt for a CLI
@@ -147,11 +184,11 @@ climate publish petstore --owner disk0Dancer
 
 ## Notes
 
-- Most climate commands output JSON on success (`generate`, `compose`, `list`,
-  `publish`, `remove`, `upgrade`).
-- `climate mock` in server mode and both `climate skill ...` commands output
-  plain text / Markdown by design.
+- Most climate management output is JSON on success.
+- `climate skill generate`, `climate skill generator`, and `climate completion <shell>` print text to stdout.
+- `climate mock` in server mode and `climate mock --emit-url ...` intentionally print plain-text runtime output.
 - Errors are emitted as structured JSON on stderr.
 - Generated CLIs follow the shape `<cli-name> <tag> <operation> [flags] --output=json|table|raw`.
 - Homebrew install is available via `brew tap disk0Dancer/tap && brew install climate`.
 - GitHub publish auth is read from `--github-token`, `GITHUB_TOKEN`, or `GH_TOKEN`.
+- `climate remove` and `climate uninstall` prompt unless `--yes` is passed.

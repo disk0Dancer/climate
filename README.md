@@ -24,6 +24,12 @@ brew tap disk0Dancer/tap && brew install climate
 
 Or `go install github.com/disk0Dancer/climate/cmd/climate@latest`.
 
+Enable local shell completion:
+
+```bash
+climate completion install --shell zsh
+```
+
 ## How it works
 
 One command turns an OpenAPI 3.x spec into a compiled Go binary with auth, JSON output, and structured errors.
@@ -31,6 +37,18 @@ One command turns an OpenAPI 3.x spec into a compiled Go binary with auth, JSON 
 ```bash
 climate generate --name myapi https://api.example.com/openapi.json
 myapi <group> <operation> [flags] --output=json|table|raw
+```
+
+Generated CLIs also ship with spec-aware event commands:
+
+```bash
+myapi events list
+myapi config profiles create work
+myapi config profiles use work
+myapi auth login
+myapi config set --secret events.signing_secret supersecret
+myapi events listen payment-succeeded --port 8081 --tunnel auto --signature-mode hmac
+myapi events emit payment-succeeded --target-url http://localhost:8081/webhooks/payment-succeeded --signature-mode hmac
 ```
 
 ## Agent skill
@@ -61,11 +79,35 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 | `generate` | Create CLI from OpenAPI spec |
 | `compose` | Merge multiple specs (with prefixes) into one facade CLI |
 | `mock` | Run local mock HTTP server from OpenAPI spec |
+| `completion` | Print shell completions or install/uninstall them locally |
 | `list` | Show registered CLIs |
-| `remove` | Delete a generated CLI |
+| `remove` | Interactively delete a generated CLI |
+| `uninstall` | Remove the climate CLI itself, optionally with full cleanup |
 | `upgrade` | Regenerate from updated spec |
 | `publish` | Push CLI to GitHub with CI/auto-fix/release |
 | `skill generate` | Emit agent skill prompt |
+
+## Shell completion
+
+```bash
+# print a completion script
+climate completion zsh
+
+# install it into your local shell setup
+climate completion install --shell zsh
+
+# remove climate-managed completion wiring later
+climate completion uninstall --shell zsh
+
+# remove one generated CLI with confirmation
+climate remove petstore
+
+# uninstall only the climate executable
+climate uninstall
+
+# uninstall climate plus generated CLIs, manifest, and completions
+climate uninstall --full
+```
 
 ## Docs
 
@@ -74,6 +116,9 @@ Demo: [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ end
 - [Compose design](docs/design-compose.md)
 - [CI auto-fix design](docs/design-ci-autofix.md)
 - [Mock design](docs/design-mock.md)
+- [Generated event listener design](docs/design-generated-events.md)
+- [Shell completion design](docs/design-shell-completions.md)
+- [Uninstall design](docs/design-uninstall.md)
 - [OpenAPI 3.0 support matrix](docs/openapi-3-support-matrix.md)
 
 ## Development

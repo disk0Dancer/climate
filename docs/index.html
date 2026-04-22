@@ -174,6 +174,8 @@ petstore pet get --pet-id 1</code></pre>
       <pre class="shell"><code>brew tap disk0Dancer/tap && brew install climate</code></pre>
       <h3>Go</h3>
       <pre class="shell"><code>go install github.com/disk0Dancer/climate/cmd/climate@latest</code></pre>
+      <h3>Shell completion</h3>
+      <pre class="shell"><code>climate completion install --shell zsh</code></pre>
       <h3>Binary</h3>
       <pre class="shell"><code>curl -L https://github.com/disk0Dancer/climate/releases/latest/download/climate-darwin-arm64.tar.gz | tar xz
 sudo mv climate-darwin-arm64 /usr/local/bin/climate</code></pre>
@@ -183,6 +185,14 @@ sudo mv climate-darwin-arm64 /usr/local/bin/climate</code></pre>
       <h2>How it works</h2>
       <p>Every generated CLI has the same shape:</p>
       <pre class="shell"><code>&lt;cli&gt; &lt;group&gt; &lt;operation&gt; [flags] --output=json|table|raw</code></pre>
+      <p>Generated CLIs also include spec-aware event commands:</p>
+      <pre class="shell"><code>&lt;cli&gt; events list
+&lt;cli&gt; config profiles create work
+&lt;cli&gt; config profiles use work
+&lt;cli&gt; auth login
+&lt;cli&gt; config set --secret events.signing_secret supersecret
+&lt;cli&gt; events listen payment-succeeded --port 8081 --tunnel auto --signature-mode hmac
+&lt;cli&gt; events emit payment-succeeded --target-url http://localhost:8081/webhooks/payment-succeeded --signature-mode hmac</code></pre>
       <div class="grid-2">
         <div class="mini">
           <h3>Groups &amp; operations</h3>
@@ -199,6 +209,10 @@ sudo mv climate-darwin-arm64 /usr/local/bin/climate</code></pre>
         <div class="mini">
           <h3>Auth</h3>
           <p>API key, bearer, basic, and OAuth2 client credentials. Set via env vars.</p>
+        </div>
+        <div class="mini">
+          <h3>Webhook listener</h3>
+          <p>List, receive, and emit named callbacks/webhooks, with cloudflared exposure, gcloud-like local configurations, and configurable HMAC signatures.</p>
         </div>
       </div>
     </section>
@@ -225,8 +239,10 @@ climate publish github --owner disk0Dancer</code></pre>
       <h2>Commands</h2>
       <div class="grid-2">
         <div class="mini"><h3>generate</h3><p>Create CLI from OpenAPI spec</p></div>
+        <div class="mini"><h3>completion</h3><p>Print shell completions or install/uninstall them locally</p></div>
         <div class="mini"><h3>list</h3><p>Show registered CLIs</p></div>
-        <div class="mini"><h3>remove</h3><p>Delete a generated CLI</p></div>
+        <div class="mini"><h3>remove</h3><p>Interactively delete a generated CLI</p></div>
+        <div class="mini"><h3>uninstall</h3><p>Remove the climate CLI itself, optionally with full cleanup</p></div>
         <div class="mini"><h3>upgrade</h3><p>Regenerate from updated spec</p></div>
         <div class="mini"><h3>publish</h3><p>Push CLI to GitHub with CI/release</p></div>
         <div class="mini"><h3>skill generate</h3><p>Emit agent skill prompt for a CLI</p></div>

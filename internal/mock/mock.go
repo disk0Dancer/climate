@@ -335,6 +335,20 @@ func GenerateEventPayload(openAPI *spec.OpenAPI, path string, method string) (in
 		return nil, fmt.Errorf("method %q is not defined for path %q", method, path)
 	}
 
+	return GeneratePayloadForOperation(openAPI, op)
+}
+
+// GeneratePayloadForOperation builds a synthetic JSON payload for an operation.
+// It prefers the requestBody schema (`application/json` first) and falls back
+// to the first successful 2xx response schema.
+func GeneratePayloadForOperation(openAPI *spec.OpenAPI, op *spec.Operation) (interface{}, error) {
+	if openAPI == nil {
+		return nil, errors.New("openapi spec is nil")
+	}
+	if op == nil {
+		return nil, errors.New("operation is nil")
+	}
+
 	if schema := requestBodySchema(op.RequestBody); schema != nil {
 		return generateValue(schema, openAPI, 0), nil
 	}

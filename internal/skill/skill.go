@@ -108,6 +108,36 @@ func GenerateCLIPrompt(entry manifest.CLIEntry, openAPI *spec.OpenAPI, mode Mode
 			}
 		}
 	}
+	b.WriteString("\nEvery generated CLI also includes local config commands:\n\n")
+	b.WriteString("```\n")
+	b.WriteString(bin + " config list\n")
+	b.WriteString(bin + " config set <key> <value>\n")
+	b.WriteString(bin + " config get <key>\n")
+	b.WriteString(bin + " config unset <key>\n")
+	b.WriteString(bin + " config profiles list\n")
+	b.WriteString(bin + " config profiles create <name>\n")
+	b.WriteString(bin + " config profiles use <name>\n")
+	b.WriteString(bin + " config set --secret events.signing_secret <value>\n")
+	b.WriteString("```\n\n")
+	b.WriteString("Use config to persist defaults such as base URL, signature settings, and signing secrets. Commands operate on the active profile, similar to gcloud configurations.\n")
+
+	if len(schemes) > 0 {
+		b.WriteString("\nGenerated CLIs also include auth commands:\n\n")
+		b.WriteString("```\n")
+		b.WriteString(bin + " auth login [--scheme <name>]\n")
+		b.WriteString(bin + " auth status\n")
+		b.WriteString(bin + " auth logout [--scheme <name>]\n")
+		b.WriteString("```\n\n")
+		b.WriteString("Use `auth login` to interactively store credentials or fetch/store an OAuth2 token when the security scheme exposes a compatible token URL.\n")
+	}
+
+	b.WriteString("\nEvery generated CLI also includes spec-aware event commands:\n\n")
+	b.WriteString("```\n")
+	b.WriteString(bin + " events list\n")
+	b.WriteString(bin + " events listen [event-name] [--host 127.0.0.1] [--port 8081] [--path /] [--tunnel none|auto|cloudflared] [--signature-mode none|hmac]\n")
+	b.WriteString(bin + " events emit <event-name> --target-url <url> [--data-json '<json>'] [--data-file <path>] [--signature-mode none|hmac]\n")
+	b.WriteString("```\n\n")
+	b.WriteString("Use `events list` to inspect generated callback/webhook names. Use `events listen <event-name>` to receive a specific callback locally. Pass `--tunnel auto` to expose the listener through `cloudflared`. Use `--signature-mode hmac` plus config or flags for `events.signing_secret`, header name, algorithm, and timestamp behavior.\n")
 	b.WriteString("\n")
 
 	if mode == ModeCompact {

@@ -1,0 +1,348 @@
+package cmd
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+
+	cfg "{{.CLIName}}/internal/config"
+	"github.com/spf13/cobra"
+)
+
+type authSchemeDefinition struct {
+	Name                 string
+	ConfigKey            string
+	Type                 string
+	AuthorizationURL     string
+	TokenURL             string
+	HasClientCredentials bool
+	HasPasswordFlow      bool
+	HasAuthorizationCode bool
+	HasImplicitFlow      bool
+}
+
+var generatedAuthSchemes = []authSchemeDefinition{
+{{.AuthSchemes}}}
+
+var authSchemeName string
+
+var authCmd = &cobra.Command{
+	Use:   "auth",
+	Short: "Manage authentication for this CLI",
+}
+
+var authLoginCmd = &cobra.Command{
+	Use:   "login",
+	Short: "Interactively configure authentication",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := cfg.Load()
+		if err != nil {
+			return err
+		}
+		scheme, err := selectedAuthScheme(authSchemeName)
+		if err != nil {
+			return err
+		}
+
+		reader := bufio.NewReader(cmd.InOrStdin())
+		switch scheme.Type {
+		case "apiKey":
+			value, err := prompt(reader, cmd.ErrOrStderr(), "API key")
+			if err != nil {
+				return err
+			}
+			store.Set("auth.api_keys."+scheme.ConfigKey, value, true)
+		case "http_bearer", "openIdConnect":
+			token, err := prompt(reader, cmd.ErrOrStderr(), "Access token")
+			if err != nil {
+				return err
+			}
+			store.Set("auth.bearer_token", token, true)
+		case "http_basic":
+			username, err := prompt(reader, cmd.ErrOrStderr(), "Username")
+			if err != nil {
+				return err
+			}
+			password, err := prompt(reader, cmd.ErrOrStderr(), "Password (input visible)")
+			if err != nil {
+				return err
+			}
+			store.Set("auth.basic_username", username, false)
+			store.Set("auth.basic_password", password, true)
+		case "oauth2":
+			if err := interactiveOAuthLogin(reader, cmd.ErrOrStderr(), store, scheme); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported auth scheme %q", scheme.Type)
+		}
+
+		if err := store.Save(); err != nil {
+			return err
+		}
+		type resp struct {
+			Active string `json:"active"`
+			Scheme string `json:"scheme"`
+			Status string `json:"status"`
+		}
+		writeJSON(resp{Active: store.ActiveProfileName(), Scheme: scheme.Name, Status: "configured"})
+		return nil
+	},
+}
+
+var authStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show authentication status for the active configuration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := cfg.Load()
+		if err != nil {
+			return err
+		}
+
+		type schemeStatus struct {
+			Name       string   `json:"name"`
+			Type       string   `json:"type"`
+			Configured bool     `json:"configured"`
+			Keys       []string `json:"keys"`
+		}
+		type resp struct {
+			Active string        `json:"active"`
+			Schemes []schemeStatus `json:"schemes"`
+		}
+
+		statuses := make([]schemeStatus, 0, len(generatedAuthSchemes))
+		for _, scheme := range generatedAuthSchemes {
+			keys := authKeysForScheme(scheme)
+			configured := false
+			for _, key := range keys {
+				if _, ok := store.Get(key); ok {
+					configured = true
+					break
+				}
+			}
+			statuses = append(statuses, schemeStatus{
+				Name:       scheme.Name,
+				Type:       scheme.Type,
+				Configured: configured,
+				Keys:       keys,
+			})
+		}
+
+		writeJSON(resp{Active: store.ActiveProfileName(), Schemes: statuses})
+		return nil
+	},
+}
+
+var authLogoutCmd = &cobra.Command{
+	Use:   "logout",
+	Short: "Remove stored authentication from the active configuration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := cfg.Load()
+		if err != nil {
+			return err
+		}
+
+		removed := []string{}
+		if authSchemeName != "" {
+			scheme, err := selectedAuthScheme(authSchemeName)
+			if err != nil {
+				return err
+			}
+			for _, key := range authKeysForScheme(scheme) {
+				if store.Unset(key) {
+					removed = append(removed, key)
+				}
+			}
+		} else {
+			for _, scheme := range generatedAuthSchemes {
+				for _, key := range authKeysForScheme(scheme) {
+					if store.Unset(key) {
+						removed = append(removed, key)
+					}
+				}
+			}
+		}
+
+		if err := store.Save(); err != nil {
+			return err
+		}
+		type resp struct {
+			Active  string   `json:"active"`
+			Removed []string `json:"removed"`
+		}
+		writeJSON(resp{Active: store.ActiveProfileName(), Removed: removed})
+		return nil
+	},
+}
+
+func selectedAuthScheme(name string) (authSchemeDefinition, error) {
+	if len(generatedAuthSchemes) == 0 {
+		return authSchemeDefinition{}, fmt.Errorf("this CLI has no supported auth schemes")
+	}
+	if strings.TrimSpace(name) == "" {
+		return generatedAuthSchemes[0], nil
+	}
+	for _, scheme := range generatedAuthSchemes {
+		if scheme.Name == name {
+			return scheme, nil
+		}
+	}
+	return authSchemeDefinition{}, fmt.Errorf("unknown auth scheme %q", name)
+}
+
+func authKeysForScheme(scheme authSchemeDefinition) []string {
+	switch scheme.Type {
+	case "apiKey":
+		return []string{"auth.api_keys." + scheme.ConfigKey}
+	case "http_bearer", "openIdConnect":
+		return []string{"auth.bearer_token"}
+	case "http_basic":
+		return []string{"auth.basic_username", "auth.basic_password"}
+	case "oauth2":
+		return []string{"auth.oauth2_token", "auth.oauth2_client_id", "auth.oauth2_client_secret", "auth.oauth2_username", "auth.oauth2_password"}
+	default:
+		return nil
+	}
+}
+
+func interactiveOAuthLogin(reader *bufio.Reader, stderr io.Writer, store *cfg.Store, scheme authSchemeDefinition) error {
+	switch {
+	case scheme.HasClientCredentials:
+		clientID, err := prompt(reader, stderr, "OAuth2 client ID")
+		if err != nil {
+			return err
+		}
+		clientSecret, err := prompt(reader, stderr, "OAuth2 client secret (input visible)")
+		if err != nil {
+			return err
+		}
+		token, err := requestOAuthToken(scheme.TokenURL, url.Values{
+			"grant_type":    {"client_credentials"},
+			"client_id":     {clientID},
+			"client_secret": {clientSecret},
+		})
+		if err != nil {
+			return err
+		}
+		store.Set("auth.oauth2_client_id", clientID, false)
+		store.Set("auth.oauth2_client_secret", clientSecret, true)
+		store.Set("auth.oauth2_token", token, true)
+		return nil
+	case scheme.HasPasswordFlow:
+		username, err := prompt(reader, stderr, "OAuth2 username")
+		if err != nil {
+			return err
+		}
+		password, err := prompt(reader, stderr, "OAuth2 password (input visible)")
+		if err != nil {
+			return err
+		}
+		clientID, err := prompt(reader, stderr, "OAuth2 client ID (optional)")
+		if err != nil {
+			return err
+		}
+		clientSecret, err := prompt(reader, stderr, "OAuth2 client secret (optional, input visible)")
+		if err != nil {
+			return err
+		}
+		form := url.Values{
+			"grant_type": {"password"},
+			"username":   {username},
+			"password":   {password},
+		}
+		if strings.TrimSpace(clientID) != "" {
+			form.Set("client_id", clientID)
+		}
+		if strings.TrimSpace(clientSecret) != "" {
+			form.Set("client_secret", clientSecret)
+		}
+		token, err := requestOAuthToken(scheme.TokenURL, form)
+		if err != nil {
+			return err
+		}
+		store.Set("auth.oauth2_username", username, false)
+		store.Set("auth.oauth2_password", password, true)
+		if strings.TrimSpace(clientID) != "" {
+			store.Set("auth.oauth2_client_id", clientID, false)
+		}
+		if strings.TrimSpace(clientSecret) != "" {
+			store.Set("auth.oauth2_client_secret", clientSecret, true)
+		}
+		store.Set("auth.oauth2_token", token, true)
+		return nil
+	default:
+		if scheme.AuthorizationURL != "" {
+			_, _ = fmt.Fprintf(stderr, "Open this URL in a browser and complete the flow:\n%s\n", scheme.AuthorizationURL)
+		}
+		token, err := prompt(reader, stderr, "Paste access token")
+		if err != nil {
+			return err
+		}
+		store.Set("auth.oauth2_token", token, true)
+		return nil
+	}
+}
+
+func requestOAuthToken(tokenURL string, form url.Values) (string, error) {
+	if strings.TrimSpace(tokenURL) == "" {
+		return "", fmt.Errorf("oauth2 token URL is not available in the OpenAPI security scheme")
+	}
+	resp, err := http.PostForm(tokenURL, form)
+	if err != nil {
+		return "", fmt.Errorf("requesting oauth2 token: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading oauth2 token response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("oauth2 token endpoint returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var decoded struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return "", fmt.Errorf("parsing oauth2 token response: %w", err)
+	}
+	if strings.TrimSpace(decoded.AccessToken) == "" {
+		return "", fmt.Errorf("oauth2 token response did not contain access_token")
+	}
+	return decoded.AccessToken, nil
+}
+
+func prompt(reader *bufio.Reader, stderr io.Writer, label string) (string, error) {
+	_, _ = fmt.Fprintf(stderr, "%s: ", label)
+	value, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
+}
+
+func completeAuthSchemes(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	names := make([]string, 0, len(generatedAuthSchemes))
+	for _, scheme := range generatedAuthSchemes {
+		names = append(names, scheme.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func init() {
+	authLoginCmd.Flags().StringVar(&authSchemeName, "scheme", "", "Select the auth scheme to configure")
+	authLogoutCmd.Flags().StringVar(&authSchemeName, "scheme", "", "Select the auth scheme to remove")
+	_ = authLoginCmd.RegisterFlagCompletionFunc("scheme", completeAuthSchemes)
+	_ = authLogoutCmd.RegisterFlagCompletionFunc("scheme", completeAuthSchemes)
+
+	authCmd.AddCommand(authLoginCmd)
+	authCmd.AddCommand(authStatusCmd)
+	authCmd.AddCommand(authLogoutCmd)
+	rootCmd.AddCommand(authCmd)
+}

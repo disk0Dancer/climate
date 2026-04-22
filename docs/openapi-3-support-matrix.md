@@ -23,9 +23,9 @@ what is partially supported, and what should be designed/implemented next.
 | Local mock simulator (`mock`) | ✅ Implemented | Auto responses from spec schema + latency | Add optional examples-first mode |
 | `enum` | ✅ Implemented (mock) / ⚠️ partial (CLI) | Mock prefers first enum value | Add flag-level enum validation/help text |
 | `allOf`, `oneOf`, `anyOf`, `not` | ⚠️ Partial | Core flow works for simple schemas; advanced combiners not fully synthesized | Add schema normalizer for combiners |
-| `servers` and server variables | ✅ Implemented | Generated CLIs use primary server URL and support server-template interpolation via `--server-var-<name>` and `<CLI>_SERVER_VAR_<NAME>` env vars | Keep stable |
-| `callbacks` | ⚠️ Partial | Not mapped to generated CLI surface; `climate mock` can generate and emit synthetic event payloads to target endpoints via flags | Add event command model (`events subscribe`/`events trigger`) |
-| `webhooks` (3.1) | ⚠️ Partial | Top-level webhook declarations are not yet parsed as first-class objects; mock has event emission mode for local webhook testing | Add webhook simulation and event ingestion model |
+| `servers` and server variables | ✅ Implemented | Generated CLIs use the primary server URL and support server-template interpolation via `--server-var-<name>` and `<CLI>_SERVER_VAR_<NAME>` env vars | Keep stable |
+| `callbacks` | ✅ Implemented / ⚠️ Partial | Generated CLIs expose callback-derived named event commands via `events list`, `events listen <name>`, and `events emit <name>` | Improve callback expression/path inference and richer config-driven defaults |
+| `webhooks` (3.1) | ✅ Implemented / ⚠️ Partial | Top-level `webhooks` become named generated event commands with local listener + emit flow | Add richer schema-aware event metadata and replay tooling |
 | Links | ❌ Planned | Ignored | Add optional “follow-up command hint” output |
 | Examples (`example` / `examples`) | ⚠️ Partial | Not consistently preferred in generation | Use examples as first-class sample payload/response source |
 
@@ -34,19 +34,33 @@ what is partially supported, and what should be designed/implemented next.
 Some APIs are event-driven and include webhooks/callbacks instead of (or in
 addition to) plain request/response endpoints.
 
-Proposed direction for generated CLIs:
+Current baseline for generated CLIs:
 
-1. **Expose webhook declarations as event commands**
+1. **Named event surface**
    - `myapi events list`
-   - `myapi events emit <event-name> --data-json ...` (test mode)
-2. **Support local receiver**
-   - `myapi events listen --port 8081` to receive and inspect payloads
-3. **Support production replay/import**
+   - `myapi events listen <event-name>`
+   - `myapi events emit <event-name> --target-url ...`
+2. **Local config store**
+   - `myapi config list`
+   - `myapi config set`
+   - `myapi config set --secret events.signing_secret ...`
+3. **Optional tunnel exposure**
+   - `--tunnel auto|cloudflared`
+4. **Generic HMAC signatures**
+   - configurable header, algorithm, and optional timestamp signing
+5. **Structured event stream**
+   - startup, tunnel, and received-event records are streamed as JSON
+
+Proposed next direction for generated CLIs:
+
+1. **Add richer event metadata to OpenAPI extensions**
+   - signature defaults, path overrides, and replay hints
+2. **Support production replay/import**
    - `myapi events import --file payload.json --event <name>`
    - `myapi events replay --source prod-export.ndjson`
-4. **Compose awareness**
+3. **Compose awareness**
    - In `compose`, namespace event names with prefix (same as path/components)
-5. **Mock integration**
+4. **Mock integration**
    - `climate mock` can emit synthetic webhook payloads at intervals or on
      demand for integration tests
 
@@ -77,7 +91,7 @@ Safety defaults:
 ## Prioritized implementation roadmap
 
 1. Pagination abstraction + generated paging flags (`--all`, `--max-items`)
-2. `callbacks` support in generator command tree
-3. `webhooks` support + local listener/emitter helpers
+2. config-driven secret and signature UX hardening
+3. production replay/import workflow for named events
 4. examples-first generation mode (payloads + mock responses)
 5. advanced schema combiner normalization (`allOf`/`oneOf`/`anyOf`)

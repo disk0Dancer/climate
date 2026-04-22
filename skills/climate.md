@@ -11,10 +11,13 @@ so you can self-register those CLIs as new skills.
 - Generate a typed Go CLI from any OpenAPI spec (URL or local file).
 - Compose several OpenAPI specs into one facade CLI with per-spec path prefixes.
 - Run a local OpenAPI-based mock HTTP server for simulator/sandbox workflows.
+- Generate CLIs that can run spec-aware webhook/callback commands with optional cloudflared exposure and a local config store.
+- Generate shell completion scripts for climate and manage local install/uninstall.
 - List all CLIs you have already generated.
 - Get a plain-text skill prompt for any generated CLI so you can self-register it.
 - Publish a generated CLI into a GitHub repository with lifecycle bootstrap.
 - Remove or upgrade a previously generated CLI.
+- Uninstall the climate CLI itself, with optional full cleanup of climate-managed local artifacts.
 
 ---
 
@@ -45,6 +48,33 @@ climate generate [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] <o
   "openapi_hash":"<sha256 of the spec>"
 }
 ```
+
+Generated CLIs also include:
+
+```
+<cli-name> events list
+<cli-name> config list
+<cli-name> config set <key> <value>
+<cli-name> config get <key>
+<cli-name> config unset <key>
+<cli-name> config profiles list
+<cli-name> config profiles create <name>
+<cli-name> config profiles use <name>
+<cli-name> config set --secret events.signing_secret <value>
+<cli-name> auth login [--scheme <name>]
+<cli-name> auth status
+<cli-name> auth logout [--scheme <name>]
+<cli-name> events listen [event-name] [--host 127.0.0.1] [--port 8081] [--path /] [--tunnel none|auto|cloudflared] [--signature-mode none|hmac]
+<cli-name> events emit <event-name> --target-url <url> [--data-json <json>] [--data-file <path>] [--signature-mode none|hmac]
+```
+
+Use this to inspect generated callback/webhook names, receive them locally, and
+emit synthetic payloads. Named profiles act like lightweight gcloud-style
+profiles, and `auth login` can interactively store credentials or fetch/store
+OAuth2 tokens when the API exposes compatible flows. `config set --secret
+events.signing_secret ...` stores the signing secret for later use. `--tunnel
+auto` exposes the listener through `cloudflared`. HMAC signing is configurable
+via header name, algorithm, and optional timestamp signing.
 
 ---
 
@@ -88,6 +118,21 @@ manifest (`~/.climate/manifest.json`).
 
 ---
 
+### Generate or manage shell completions for climate
+
+```
+climate completion bash|zsh|fish|powershell
+climate completion install [--shell bash|zsh|fish|powershell]
+climate completion uninstall [--shell bash|zsh|fish|powershell]
+```
+
+`climate completion <shell>` prints the raw completion script to stdout.
+`install` writes a climate-managed script file and updates the relevant local
+shell config when needed. `uninstall` removes only climate-managed completion
+files and config blocks.
+
+---
+
 ### Get a skill prompt for a generated CLI
 
 ```
@@ -122,11 +167,28 @@ Authentication is read from `--github-token`, `GITHUB_TOKEN`, or `GH_TOKEN`.
 ### Remove a generated CLI
 
 ```
-climate remove [--purge-sources] <cli-name>
+climate remove [--purge-sources] [--yes] <cli-name>
 ```
 
-Removes the binary and manifest entry. `--purge-sources` also deletes the
-generated source directory.
+Prompts before deletion by default. Removes the binary and manifest entry.
+`--purge-sources` also deletes the generated source directory. `--yes` skips
+the prompt.
+
+---
+
+### Uninstall the climate CLI itself
+
+```
+climate uninstall [--full] [--yes]
+```
+
+Detects whether climate was installed via Homebrew, `go install`, or a
+standalone binary and removes it the right way for that installation method.
+
+- Default mode removes only the climate executable.
+- `--full` also removes generated CLIs recorded in the manifest, their source
+  directories, the manifest file, and climate-managed shell completion wiring.
+- `--yes` skips the prompt.
 
 ---
 
@@ -142,17 +204,15 @@ Re-generates and rebuilds a CLI. Pass `--openapi` to use a different spec.
 
 ## Output format
 
-Most commands exit 0 and print JSON to stdout (`generate`, `compose`, `list`,
-`publish`, `remove`, `upgrade`).
+Most climate management commands exit 0 and print JSON to stdout.
+Text-printing commands include:
 
-Text/Markdown-oriented commands intentionally print plain text:
+- `climate skill generate`
+- `climate skill generator`
+- `climate completion <shell>`
+- `climate mock` runtime output
 
-- `climate mock` (server mode) prints startup info and route table
-- `climate mock --emit-url ...` prints a one-line emission result
-- `climate skill generate` prints Markdown prompt text
-- `climate skill generator` prints the built-in Markdown skill
-
-On error commands exit non-zero and print to stderr:
+On error commands exit non-zero and print structured JSON to stderr:
 
 ```json
 {
@@ -173,9 +233,11 @@ On error commands exit non-zero and print to stderr:
 3. Note the `cli_name` in the JSON response.
 4. Run `climate skill generate <cli_name>` → read the plain-text prompt it prints.
 5. Optional: run `climate mock <openapi_spec>` for local simulator/sandbox testing.
-6. Run `climate publish <cli_name>` if the user wants the generated CLI managed on GitHub.
-7. Follow the self-registration instructions inside that prompt.
-8. Use the new CLI skill for all subsequent tasks that involve that API.
+6. Optional: run `climate completion install --shell zsh` if the user wants tab completion for climate itself.
+7. Run `climate publish <cli_name>` if the user wants the generated CLI managed on GitHub.
+8. Follow the self-registration instructions inside that prompt.
+9. Use the new CLI skill for all subsequent tasks that involve that API.
+10. If the user wants to remove a generated CLI later, prefer `climate remove` and let the confirmation prompt guard accidental deletion.
 
 ---
 
