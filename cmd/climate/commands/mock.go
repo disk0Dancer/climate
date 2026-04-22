@@ -48,7 +48,7 @@ Examples:
 		emitMode := strings.TrimSpace(mockEmitURL) != ""
 
 		if !emitMode && (cmd.Flags().Changed("event-path") || cmd.Flags().Changed("event-method")) {
-			exitError("--event-path and --event-method can only be used with --emit-url", nil)
+			exitError("--event-path and --event-method require --emit-url", nil)
 		}
 		if emitMode {
 			if strings.TrimSpace(mockEventPath) == "" {
@@ -57,7 +57,7 @@ Examples:
 			if !isValidHTTPMethod(method) {
 				exitError(
 					"Invalid --event-method value",
-					fmt.Errorf("unsupported HTTP method %q (supported: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE, CONNECT)", method),
+					fmt.Errorf("unsupported HTTP method %q (supported: GET, POST, PUT, PATCH, DELETE)", method),
 				)
 			}
 		}
@@ -114,14 +114,10 @@ func init() {
 func isValidHTTPMethod(method string) bool {
 	switch method {
 	case http.MethodGet,
-		http.MethodHead,
 		http.MethodPost,
 		http.MethodPut,
 		http.MethodPatch,
-		http.MethodDelete,
-		http.MethodOptions,
-		http.MethodTrace,
-		http.MethodConnect:
+		http.MethodDelete:
 		return true
 	default:
 		return false
