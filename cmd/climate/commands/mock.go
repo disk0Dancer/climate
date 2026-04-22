@@ -55,7 +55,7 @@ Examples:
 				exitError("Missing required flag --event-path when using --emit-url", nil)
 			}
 			if !isValidHTTPMethod(method) {
-				exitError("Invalid --event-method value", fmt.Errorf("unsupported HTTP method %q", mockEventMethod))
+				exitError("Invalid --event-method value", fmt.Errorf("unsupported HTTP method %q", method))
 			}
 		}
 

@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -319,8 +318,8 @@ func TestGenerateEventPayload_FallbackToResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateEventPayload error: %v", err)
 	}
-	if reflect.TypeOf(payload).Kind() != reflect.Slice {
-		t.Fatalf("payload type = %T, want slice fallback from response schema", payload)
+	if _, ok := payload.([]interface{}); !ok {
+		t.Fatalf("payload type = %T, want []interface{} fallback from response schema", payload)
 	}
 }
 
