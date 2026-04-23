@@ -362,13 +362,7 @@ func runGitCommit(dir, messagePath string) error {
 		"-c", "user.email=climate@users.noreply.github.com",
 		"commit", "-F", messagePath,
 	}
-	cmd := exec.Command("git", args...) //nolint:gosec
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, string(out))
-	}
-	return nil
+	return runGit(dir, args...)
 }
 
 // PublishedManifestEntry returns a manifest entry updated with repository metadata.
