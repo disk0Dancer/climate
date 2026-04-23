@@ -5,23 +5,62 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
 
 // version is set at build time via -ldflags "-X github.com/disk0Dancer/climate/cmd/climate/commands.version=vX.Y.Z"
 var version = "dev"
+var readBuildInfo = debug.ReadBuildInfo
 
 var rootCmd = &cobra.Command{
 	Use:     "climate",
 	Short:   "climate — CLI Tool Orchestrator",
 	Long:    `climate generates production-ready Go CLIs from OpenAPI specifications.`,
-	Version: version,
+	Version: resolvedVersion(),
 }
 
 // Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+func resolvedVersion() string {
+	if version != "" && version != "dev" {
+		return version
+	}
+
+	info, ok := readBuildInfo()
+	if !ok {
+		return "dev"
+	}
+
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+
+	var revision string
+	var dirty bool
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			dirty = setting.Value == "true"
+		}
+	}
+
+	if revision == "" {
+		return "dev"
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if dirty {
+		return "dev+" + revision + "-dirty"
+	}
+	return "dev+" + revision
 }
 
 // writeJSON prints v as indented JSON to stdout.
