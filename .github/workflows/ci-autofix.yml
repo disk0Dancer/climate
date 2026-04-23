@@ -24,7 +24,9 @@ jobs:
       - name: Checkout failed branch
         uses: actions/checkout@v4
         with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
 
       - name: Stop on stale branch head
         id: freshness
@@ -79,7 +81,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "ci: auto-fix formatting and lint"
-          git push origin HEAD:${{ github.event.workflow_run.head_branch }}
+          branch="${{ github.event.workflow_run.head_branch }}"
+          git fetch origin "${branch}"
+          git pull --rebase origin "${branch}"
+          git push origin HEAD:"${branch}"
 
       - name: Re-dispatch CI
         if: steps.changes.outputs.changed == 'true'
