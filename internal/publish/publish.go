@@ -343,7 +343,7 @@ Not-tested: Remote release workflow execution
 	if err := os.WriteFile(messagePath, []byte(message), 0o644); err != nil {
 		return fmt.Errorf("writing git commit message: %w", err)
 	}
-	return runGit(sourceDir, "commit", "-F", messagePath)
+	return runGitCommit(sourceDir, messagePath)
 }
 
 func runGit(dir string, args ...string) error {
@@ -354,6 +354,15 @@ func runGit(dir string, args ...string) error {
 		return fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, string(out))
 	}
 	return nil
+}
+
+func runGitCommit(dir, messagePath string) error {
+	args := []string{
+		"-c", "user.name=climate",
+		"-c", "user.email=climate@users.noreply.github.com",
+		"commit", "-F", messagePath,
+	}
+	return runGit(dir, args...)
 }
 
 // PublishedManifestEntry returns a manifest entry updated with repository metadata.

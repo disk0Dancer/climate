@@ -91,7 +91,7 @@ func TestSyncGitRepositoryExistingRepoPreservesRemoteFiles(t *testing.T) {
 	}
 
 	verifyDir := t.TempDir()
-	if err := runGit("", "clone", remoteBare, verifyDir); err != nil {
+	if err := runGit("", "clone", "--branch", "main", remoteBare, verifyDir); err != nil {
 		t.Fatalf("clone verify repo: %v", err)
 	}
 	readme, err := os.ReadFile(filepath.Join(verifyDir, "README.md"))
