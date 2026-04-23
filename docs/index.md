@@ -40,6 +40,16 @@ petstore pet get --pet-id 1
 - Auth via env vars (API key, bearer, basic, OAuth2)
 - Config + auth + event commands → `<cli> config profiles ...`, `<cli> config set/get`, `<cli> auth ...`, `<cli> events ...`
 
+Example generated-CLI workflow:
+
+```bash
+myapi config profiles create work
+myapi config profiles use work
+myapi auth login
+myapi config set --secret events.signing_secret supersecret
+myapi events listen payment-succeeded --port 8081 --tunnel auto --signature-mode hmac
+```
+
 ## Demo
 
 [disk0Dancer/github](https://github.com/disk0Dancer/github) — 1 100+ endpoint CLI from the GitHub REST API spec.
