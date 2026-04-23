@@ -186,6 +186,46 @@ func TestGenerateCLIPromptServerVariables(t *testing.T) {
 	}
 }
 
+func TestGenerateCLIPromptIncludesEventsListener(t *testing.T) {
+	entry := manifest.CLIEntry{Name: "petstore", Version: "1.0.0"}
+	openAPI := sampleOpenAPI()
+	openAPI.Components = spec.Components{
+		SecuritySchemes: map[string]spec.SecurityScheme{
+			"bearerAuth": {Type: "http", Scheme: "bearer"},
+		},
+	}
+
+	prompt := skill.GenerateCLIPrompt(entry, openAPI, skill.ModeFull)
+
+	if !strings.Contains(prompt, "events list") {
+		t.Error("prompt should mention the generated events list command")
+	}
+	if !strings.Contains(prompt, "events listen") {
+		t.Error("prompt should mention the generated events listener command")
+	}
+	if !strings.Contains(prompt, "events emit") {
+		t.Error("prompt should mention the generated events emit command")
+	}
+	if !strings.Contains(prompt, "config list") {
+		t.Error("prompt should mention generated config commands")
+	}
+	if !strings.Contains(prompt, "config set --secret events.signing_secret") {
+		t.Error("prompt should mention secret config storage")
+	}
+	if !strings.Contains(prompt, "config profiles use") {
+		t.Error("prompt should mention named profile management")
+	}
+	if !strings.Contains(prompt, "--tunnel auto") {
+		t.Error("prompt should mention tunnel support for the events listener")
+	}
+	if !strings.Contains(prompt, "--signature-mode") {
+		t.Error("prompt should mention generic HMAC signature support")
+	}
+	if !strings.Contains(prompt, "auth login") {
+		t.Error("prompt should mention interactive auth commands")
+	}
+}
+
 func TestGenerateCLIPromptRequiredParam(t *testing.T) {
 	entry := manifest.CLIEntry{Name: "petstore", Version: "1.0.0"}
 	openAPI := sampleOpenAPI()

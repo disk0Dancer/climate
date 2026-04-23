@@ -17,6 +17,7 @@ License: Apache-2.0
 - Go: go install github.com/disk0Dancer/climate/cmd/climate@latest
 - Releases: https://github.com/disk0Dancer/climate/releases
 - Homebrew: brew tap disk0Dancer/tap && brew install climate
+- Shell completion install: climate completion install --shell zsh
 
 ## Skills
 
@@ -27,12 +28,32 @@ License: Apache-2.0
 ## Key commands
 
 - climate generate [--name <cli-name>] [--out-dir <dir>] [--no-build] [--force] <openapi_spec>
+- climate completion bash|zsh|fish|powershell
+- climate completion install [--shell bash|zsh|fish|powershell]
+- climate completion uninstall [--shell bash|zsh|fish|powershell]
 - climate list
-- climate remove [--purge-sources] <cli-name>
+- climate remove [--purge-sources] [--yes] <cli-name>
+- climate uninstall [--full] [--yes]
 - climate upgrade [--openapi <spec>] <cli-name>
 - climate publish <cli-name> [--owner <owner>] [--repo <repo>] [--visibility public|private]
 - climate skill generate [--mode=full|compact] <cli-name>
 - climate skill generator
+
+## Generated CLI capabilities
+
+- <cli> <group> <operation> [flags] --output=json|table|raw
+- <cli> config list
+- <cli> config set <key> <value>
+- <cli> config get <key>
+- <cli> config unset <key>
+- <cli> config profiles list|create|use
+- <cli> config set --secret events.signing_secret <value>
+- <cli> auth login [--scheme <name>]
+- <cli> auth status
+- <cli> auth logout [--scheme <name>]
+- <cli> events list
+- <cli> events listen [event-name] [--host 127.0.0.1] [--port 8081] [--path /] [--tunnel none|auto|cloudflared] [--signature-mode none|hmac]
+- <cli> events emit <event-name> --target-url <url> [--data-json <json>] [--data-file <path>] [--signature-mode none|hmac]
 
 ## Ops
 
@@ -40,3 +61,6 @@ License: Apache-2.0
 - Tagged releases sync the Homebrew formula into disk0Dancer/homebrew-tap when HOMEBREW_TAP_TOKEN is configured
 - robots policy: https://disk0dancer.github.io/climate/robots.txt
 - Google Analytics is optional and controlled by docs/site-config.js
+- Generated event listener design: https://github.com/disk0Dancer/climate/blob/main/docs/design-generated-events.md
+- Shell completion design: https://github.com/disk0Dancer/climate/blob/main/docs/design-shell-completions.md
+- Uninstall design: https://github.com/disk0Dancer/climate/blob/main/docs/design-uninstall.md

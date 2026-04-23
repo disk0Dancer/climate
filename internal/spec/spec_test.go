@@ -79,13 +79,26 @@ func TestValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "no paths",
+			name: "no paths or webhooks",
 			spec: &spec.OpenAPI{
 				OpenAPI: "3.0.0",
 				Info:    spec.Info{Title: "Test", Version: "1.0.0"},
 				Paths:   map[string]spec.PathItem{},
 			},
 			wantErr: true,
+		},
+		{
+			name: "webhooks without paths",
+			spec: &spec.OpenAPI{
+				OpenAPI: "3.1.0",
+				Info:    spec.Info{Title: "Webhook API", Version: "1.0.0"},
+				Webhooks: map[string]spec.PathItem{
+					"payment.succeeded": {
+						Post: &spec.Operation{Summary: "Payment succeeded"},
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 
@@ -171,6 +184,89 @@ paths:
 	}
 	if got := srv.Variables["basePath"].Default; got != "v1" {
 		t.Errorf("basePath default = %q, want %q", got, "v1")
+	}
+}
+
+func TestParse_WebhooksAndCallbacks(t *testing.T) {
+	yamlSpec := `
+openapi: "3.1.0"
+x-climate-signature-mode: hmac
+info:
+  title: "Webhook API"
+  version: "1.0.0"
+paths:
+  /subscriptions:
+    post:
+      operationId: subscriptions_create
+      x-climate-signature-header: X-Custom-Signature
+      callbacks:
+        invoicePaid:
+          "{$request.body#/callback_url}":
+            post:
+              summary: "Invoice paid callback"
+              x-climate-event-name: invoice-paid
+              x-climate-event-path: /webhooks/invoice-paid
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        event:
+                          type: string
+webhooks:
+  payment.succeeded:
+    post:
+      summary: "Payment succeeded webhook"
+      x-climate-event-name: payment-succeeded
+      x-climate-signature-algorithm: sha512
+      x-climate-signature-include-timestamp: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+`
+	s, err := spec.Parse("test.yaml", []byte(yamlSpec))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(s.Webhooks) != 1 {
+		t.Fatalf("Webhooks count = %d, want 1", len(s.Webhooks))
+	}
+	if s.XClimateSignatureMode != "hmac" {
+		t.Fatalf("root signature mode = %q, want hmac", s.XClimateSignatureMode)
+	}
+	webhookOp := s.Webhooks["payment.succeeded"].Post
+	if webhookOp == nil || webhookOp.Summary != "Payment succeeded webhook" {
+		t.Fatal("expected parsed webhook operation")
+	}
+	if webhookOp.XClimateSignatureAlgorithm != "sha512" {
+		t.Fatalf("webhook algorithm = %q, want sha512", webhookOp.XClimateSignatureAlgorithm)
+	}
+	subscriptionOp := s.Paths["/subscriptions"].Post
+	if subscriptionOp == nil {
+		t.Fatal("expected parsed subscriptions operation")
+	}
+	if subscriptionOp.XClimateSignatureHeader != "X-Custom-Signature" {
+		t.Fatalf("callback parent signature header = %q", subscriptionOp.XClimateSignatureHeader)
+	}
+	callback, ok := subscriptionOp.Callbacks["invoicePaid"]
+	if !ok {
+		t.Fatal("expected callback to be parsed")
+	}
+	item, ok := callback["{$request.body#/callback_url}"]
+	if !ok || item.Post == nil {
+		t.Fatal("expected callback expression path item")
+	}
+	if item.Post.XClimateEventName != "invoice-paid" {
+		t.Fatalf("callback event name = %q, want invoice-paid", item.Post.XClimateEventName)
+	}
+	if item.Post.XClimateEventPath != "/webhooks/invoice-paid" {
+		t.Fatalf("callback event path = %q", item.Post.XClimateEventPath)
 	}
 }
 

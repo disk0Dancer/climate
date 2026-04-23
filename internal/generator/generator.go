@@ -2,6 +2,8 @@
 package generator
 
 import (
+	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,15 +11,20 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 	"unicode"
 
 	"github.com/disk0Dancer/climate/internal/auth"
+	"github.com/disk0Dancer/climate/internal/mock"
 	"github.com/disk0Dancer/climate/internal/spec"
 )
 
 // Version is the current climate version.
 const Version = "0.1.0"
+
+//go:embed templates/*
+var templateFS embed.FS
 
 // Options configures the code generator.
 type Options struct {
@@ -44,6 +51,49 @@ type Meta struct {
 	GeneratedAt    string `json:"generated_at"`
 	ClimateVersion string `json:"climate_version"`
 	SpecSource     string `json:"spec_source,omitempty"`
+}
+
+type eventDefinition struct {
+	Name                      string
+	DisplayName               string
+	Source                    string
+	Expression                string
+	DefaultPath               string
+	Methods                   []string
+	DefaultMethod             string
+	Summary                   string
+	Description               string
+	SampleJSON                string
+	SignatureMode             string
+	SignatureHeader           string
+	SignatureAlgorithm        string
+	SignatureIncludeTimestamp bool
+	SignatureTimestampHeader  string
+}
+
+type authSchemeDefinition struct {
+	Name                 string
+	ConfigKey            string
+	Type                 string
+	AuthorizationURL     string
+	TokenURL             string
+	HasClientCredentials bool
+	HasPasswordFlow      bool
+	HasAuthorizationCode bool
+	HasImplicitFlow      bool
+}
+
+func renderTemplate(name string, data interface{}) (string, error) {
+	tmpl, err := template.ParseFS(templateFS, "templates/"+name)
+	if err != nil {
+		return "", fmt.Errorf("parse template %s: %w", name, err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("execute template %s: %w", name, err)
+	}
+	return buf.String(), nil
 }
 
 // Generate generates a Go CLI project from an OpenAPI spec and optionally builds it.
@@ -110,6 +160,11 @@ func Generate(openAPI *spec.OpenAPI, rawSpec []byte, opts Options) (*Result, err
 // generateFiles writes all Go source files for the CLI project.
 func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource string) error {
 	schemes := auth.ParseSchemes(openAPI)
+	eventDefs, err := extractEventDefinitions(openAPI)
+	if err != nil {
+		return err
+	}
+	authDefs := extractAuthSchemeDefinitions(schemes)
 
 	// Write go.mod
 	if err := writeFile(filepath.Join(outDir, "go.mod"), goModContent(cliName)); err != nil {
@@ -117,7 +172,11 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 	}
 
 	// Write main.go
-	if err := writeFile(filepath.Join(outDir, "main.go"), mainGoContent(cliName)); err != nil {
+	mainContent, err := mainGoContent(cliName)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(outDir, "main.go"), mainContent); err != nil {
 		return err
 	}
 
@@ -126,7 +185,11 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(cmdDir, "root.go"), rootGoContent(openAPI, cliName, schemes)); err != nil {
+	rootContent, err := rootGoContent(openAPI, cliName, schemes)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(cmdDir, "root.go"), rootContent); err != nil {
 		return err
 	}
 
@@ -139,12 +202,71 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 		return err
 	}
 
+	// Write cmd/events.go
+	eventsContent, err := eventsGoContent(cliName, eventDefs)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(cmdDir, "events.go"), eventsContent); err != nil {
+		return err
+	}
+
+	// Write cmd/config.go
+	configCmdContent, err := configGoContent(cliName)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(cmdDir, "config.go"), configCmdContent); err != nil {
+		return err
+	}
+
+	// Write cmd/auth.go when auth schemes exist.
+	if len(authDefs) > 0 {
+		authCmdContent, err := authGoContent(cliName, authDefs)
+		if err != nil {
+			return err
+		}
+		if err := writeFile(filepath.Join(cmdDir, "auth.go"), authCmdContent); err != nil {
+			return err
+		}
+	}
+
 	// Write internal/client/client.go
 	clientDir := filepath.Join(outDir, "internal", "client")
 	if err := os.MkdirAll(clientDir, 0o755); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(clientDir, "client.go"), clientGoContent(openAPI)); err != nil {
+	clientContent, err := clientGoContent(openAPI)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(clientDir, "client.go"), clientContent); err != nil {
+		return err
+	}
+
+	// Write internal/config/config.go
+	configDir := filepath.Join(outDir, "internal", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return err
+	}
+	configContent, err := internalConfigGoContent(cliName)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(configDir, "config.go"), configContent); err != nil {
+		return err
+	}
+
+	// Write internal/events/events.go
+	eventsDir := filepath.Join(outDir, "internal", "events")
+	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
+		return err
+	}
+	internalEventsContent, err := internalEventsGoContent()
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(eventsDir, "events.go"), internalEventsContent); err != nil {
 		return err
 	}
 
@@ -161,6 +283,300 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 		return err
 	}
 	return writeFile(filepath.Join(outDir, "climate_meta.json"), string(metaJSON))
+}
+
+func extractEventDefinitions(openAPI *spec.OpenAPI) ([]eventDefinition, error) {
+	if openAPI == nil {
+		return nil, fmt.Errorf("openapi spec is nil")
+	}
+
+	defs := []eventDefinition{}
+	usedNames := map[string]int{}
+
+	webhookNames := make([]string, 0, len(openAPI.Webhooks))
+	for name := range openAPI.Webhooks {
+		webhookNames = append(webhookNames, name)
+	}
+	sort.Strings(webhookNames)
+
+	for _, name := range webhookNames {
+		def, err := buildEventDefinition(openAPI, spec.NormalizeName(name), name, "webhook", "", "/webhooks/"+spec.NormalizeName(name), openAPI.Webhooks[name], openAPI, openAPI.Webhooks[name], openAPI.Webhooks[name].Post)
+		if err != nil {
+			return nil, err
+		}
+		def.Name = dedupeEventName(def.Name, usedNames)
+		defs = append(defs, def)
+	}
+
+	pathKeys := make([]string, 0, len(openAPI.Paths))
+	for path := range openAPI.Paths {
+		pathKeys = append(pathKeys, path)
+	}
+	sort.Strings(pathKeys)
+
+	for _, path := range pathKeys {
+		item := openAPI.Paths[path]
+		methods := make([]string, 0, len(item.Operations()))
+		for method := range item.Operations() {
+			methods = append(methods, method)
+		}
+		sort.Strings(methods)
+
+		for _, method := range methods {
+			op := item.Operations()[method]
+			if op == nil || len(op.Callbacks) == 0 {
+				continue
+			}
+
+			callbackNames := make([]string, 0, len(op.Callbacks))
+			for callbackName := range op.Callbacks {
+				callbackNames = append(callbackNames, callbackName)
+			}
+			sort.Strings(callbackNames)
+
+			for _, callbackName := range callbackNames {
+				callback := op.Callbacks[callbackName]
+				expressions := make([]string, 0, len(callback))
+				for expression := range callback {
+					expressions = append(expressions, expression)
+				}
+				sort.Strings(expressions)
+				for _, expression := range expressions {
+					prefix := callbackEventPrefix(op, method, path)
+					baseName := spec.NormalizeName(prefix + "-" + callbackName)
+					defaultPath := callbackDefaultPath(callbackName, expression)
+					callbackItem := callback[expression]
+					def, err := buildEventDefinition(openAPI, baseName, callbackName, "callback", expression, defaultPath, callbackItem, openAPI, callbackItem, callbackItem.Post)
+					if err != nil {
+						return nil, err
+					}
+					def.Name = dedupeEventName(def.Name, usedNames)
+					defs = append(defs, def)
+				}
+			}
+		}
+	}
+
+	return defs, nil
+}
+
+func extractAuthSchemeDefinitions(schemes []auth.Scheme) []authSchemeDefinition {
+	defs := make([]authSchemeDefinition, 0, len(schemes))
+	for _, scheme := range schemes {
+		def := authSchemeDefinition{
+			Name:      scheme.Name,
+			ConfigKey: spec.NormalizeName(scheme.Name),
+			Type:      string(scheme.Type),
+		}
+		if scheme.Spec.Flows != nil {
+			if flow := scheme.Spec.Flows.ClientCredentials; flow != nil {
+				def.HasClientCredentials = true
+				if def.TokenURL == "" {
+					def.TokenURL = flow.TokenURL
+				}
+			}
+			if flow := scheme.Spec.Flows.Password; flow != nil {
+				def.HasPasswordFlow = true
+				if def.TokenURL == "" {
+					def.TokenURL = flow.TokenURL
+				}
+			}
+			if flow := scheme.Spec.Flows.AuthorizationCode; flow != nil {
+				def.HasAuthorizationCode = true
+				if def.AuthorizationURL == "" {
+					def.AuthorizationURL = flow.AuthorizationURL
+				}
+				if def.TokenURL == "" {
+					def.TokenURL = flow.TokenURL
+				}
+			}
+			if flow := scheme.Spec.Flows.Implicit; flow != nil {
+				def.HasImplicitFlow = true
+				if def.AuthorizationURL == "" {
+					def.AuthorizationURL = flow.AuthorizationURL
+				}
+			}
+		}
+		defs = append(defs, def)
+	}
+	sort.Slice(defs, func(i, j int) bool {
+		return defs[i].Name < defs[j].Name
+	})
+	return defs
+}
+
+func buildEventDefinition(openAPI *spec.OpenAPI, name, displayName, source, expression, defaultPath string, item spec.PathItem, root *spec.OpenAPI, pathItem spec.PathItem, op *spec.Operation) (eventDefinition, error) {
+	methods := make([]string, 0, len(item.Operations()))
+	for method := range item.Operations() {
+		methods = append(methods, method)
+	}
+	sort.Strings(methods)
+	if len(methods) == 0 {
+		return eventDefinition{}, fmt.Errorf("%s %q has no operations", source, displayName)
+	}
+
+	defaultMethod := methods[0]
+	op = item.Operations()[defaultMethod]
+	summary := displayName
+	if op != nil && op.Summary != "" {
+		summary = op.Summary
+	}
+	description := ""
+	if op != nil {
+		description = op.Description
+	}
+
+	sampleJSON := "{}"
+	if op != nil {
+		payload, err := mock.GeneratePayloadForOperation(openAPI, op)
+		if err == nil {
+			if data, marshalErr := json.Marshal(payload); marshalErr == nil {
+				sampleJSON = string(data)
+			}
+		}
+	}
+
+	metadata := resolveEventMetadata(root, pathItem, op)
+
+	return eventDefinition{
+		Name:                      firstNonEmpty(metadata.EventName, name),
+		DisplayName:               displayName,
+		Source:                    source,
+		Expression:                expression,
+		DefaultPath:               firstNonEmpty(metadata.EventPath, defaultPath),
+		Methods:                   methods,
+		DefaultMethod:             defaultMethod,
+		Summary:                   summary,
+		Description:               description,
+		SampleJSON:                sampleJSON,
+		SignatureMode:             metadata.SignatureMode,
+		SignatureHeader:           metadata.SignatureHeader,
+		SignatureAlgorithm:        metadata.SignatureAlgorithm,
+		SignatureIncludeTimestamp: metadata.SignatureIncludeTimestamp,
+		SignatureTimestampHeader:  metadata.SignatureTimestampHeader,
+	}, nil
+}
+
+type eventMetadata struct {
+	EventName                 string
+	EventPath                 string
+	SignatureMode             string
+	SignatureHeader           string
+	SignatureAlgorithm        string
+	SignatureIncludeTimestamp bool
+	SignatureTimestampHeader  string
+}
+
+func resolveEventMetadata(root *spec.OpenAPI, pathItem spec.PathItem, op *spec.Operation) eventMetadata {
+	meta := eventMetadata{}
+	if root != nil {
+		meta.EventName = root.XClimateEventName
+		meta.EventPath = root.XClimateEventPath
+		meta.SignatureMode = root.XClimateSignatureMode
+		meta.SignatureHeader = root.XClimateSignatureHeader
+		meta.SignatureAlgorithm = root.XClimateSignatureAlgorithm
+		meta.SignatureIncludeTimestamp = root.XClimateSignatureIncludeTimestamp
+		meta.SignatureTimestampHeader = root.XClimateSignatureTimestampHeader
+	}
+	if pathItem.XClimateEventName != "" {
+		meta.EventName = pathItem.XClimateEventName
+	}
+	if pathItem.XClimateEventPath != "" {
+		meta.EventPath = pathItem.XClimateEventPath
+	}
+	if pathItem.XClimateSignatureMode != "" {
+		meta.SignatureMode = pathItem.XClimateSignatureMode
+	}
+	if pathItem.XClimateSignatureHeader != "" {
+		meta.SignatureHeader = pathItem.XClimateSignatureHeader
+	}
+	if pathItem.XClimateSignatureAlgorithm != "" {
+		meta.SignatureAlgorithm = pathItem.XClimateSignatureAlgorithm
+	}
+	if pathItem.XClimateSignatureIncludeTimestamp {
+		meta.SignatureIncludeTimestamp = true
+	}
+	if pathItem.XClimateSignatureTimestampHeader != "" {
+		meta.SignatureTimestampHeader = pathItem.XClimateSignatureTimestampHeader
+	}
+	if op != nil {
+		if op.XClimateEventName != "" {
+			meta.EventName = op.XClimateEventName
+		}
+		if op.XClimateEventPath != "" {
+			meta.EventPath = op.XClimateEventPath
+		}
+		if op.XClimateSignatureMode != "" {
+			meta.SignatureMode = op.XClimateSignatureMode
+		}
+		if op.XClimateSignatureHeader != "" {
+			meta.SignatureHeader = op.XClimateSignatureHeader
+		}
+		if op.XClimateSignatureAlgorithm != "" {
+			meta.SignatureAlgorithm = op.XClimateSignatureAlgorithm
+		}
+		if op.XClimateSignatureIncludeTimestamp {
+			meta.SignatureIncludeTimestamp = true
+		}
+		if op.XClimateSignatureTimestampHeader != "" {
+			meta.SignatureTimestampHeader = op.XClimateSignatureTimestampHeader
+		}
+	}
+	return meta
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func callbackEventPrefix(op *spec.Operation, method, path string) string {
+	if op != nil && op.OperationID != "" {
+		return spec.NormalizeName(op.OperationID)
+	}
+	return spec.NormalizeName(strings.ToLower(method) + "-" + strings.Trim(path, "/"))
+}
+
+func callbackDefaultPath(callbackName, expression string) string {
+	if expression != "" {
+		if parsed, ok := staticCallbackPath(expression); ok {
+			return parsed
+		}
+	}
+	return "/callbacks/" + spec.NormalizeName(callbackName)
+}
+
+func staticCallbackPath(expression string) (string, bool) {
+	trimmed := strings.TrimSpace(expression)
+	if trimmed == "" {
+		return "", false
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return trimmed, true
+	}
+	if strings.Contains(trimmed, "://") {
+		parts := strings.SplitN(trimmed, "://", 2)
+		if len(parts) == 2 {
+			rest := parts[1]
+			if slash := strings.Index(rest, "/"); slash >= 0 {
+				return rest[slash:], true
+			}
+		}
+	}
+	return "", false
+}
+
+func dedupeEventName(name string, used map[string]int) string {
+	if used[name] == 0 {
+		used[name] = 1
+		return name
+	}
+	used[name]++
+	return fmt.Sprintf("%s-%d", name, used[name])
 }
 
 func buildBinary(sourceDir, outputPath string) error {
@@ -197,27 +613,16 @@ require (
 }
 
 // mainGoContent returns the main.go content for a generated CLI.
-func mainGoContent(cliName string) string {
-	return fmt.Sprintf(`package main
-
-import (
-	"fmt"
-	"os"
-
-	"%s/cmd"
-)
-
-func main() {
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-`, cliName)
+func mainGoContent(cliName string) (string, error) {
+	return renderTemplate("main.go.tmpl", struct {
+		CLIName string
+	}{
+		CLIName: cliName,
+	})
 }
 
 // rootGoContent returns the cmd/root.go content.
-func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme) string {
+func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme) (string, error) {
 	cliUpper := strings.ToUpper(strings.ReplaceAll(cliName, "-", "_"))
 
 	var authVarDecls strings.Builder
@@ -242,6 +647,7 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 		case auth.SchemeAPIKey:
 			varName := safeIdent(camelCase(scheme.Name) + "APIKey")
 			envVar := cliUpper + "_" + strings.ToUpper(strings.ReplaceAll(scheme.Name, "-", "_")) + "_API_KEY"
+			configKey := "auth.api_keys." + spec.NormalizeName(scheme.Name)
 			if !seenVars[varName] {
 				seenVars[varName] = true
 				flagName := kebabCase(scheme.Name) + "-key"
@@ -252,8 +658,11 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 				)
 				keyExpr := fmt.Sprintf(`
 	if %s == "" {
+		%s = getConfigValue(%q)
+	}
+	if %s == "" {
 		%s = os.Getenv(%q)
-	}`, varName, varName, envVar)
+	}`, varName, varName, configKey, varName, varName, envVar)
 				switch scheme.Spec.In {
 				case "header":
 					authHeadersBody.WriteString(keyExpr)
@@ -293,6 +702,9 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	{
 		tok := bearerToken
 		if tok == "" {
+			tok = getConfigValue("auth.bearer_token")
+		}
+		if tok == "" {
 			tok = os.Getenv(%q)
 		}
 		if tok != "" {
@@ -314,9 +726,15 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	{
 		u := username
 		if u == "" {
+			u = getConfigValue("auth.basic_username")
+		}
+		if u == "" {
 			u = os.Getenv(%q)
 		}
 		p := password
+		if p == "" {
+			p = getConfigValue("auth.basic_password")
+		}
 		if p == "" {
 			p = os.Getenv(%q)
 		}
@@ -353,14 +771,23 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	{
 		tok := oauth2Token
 		if tok == "" {
+			tok = getConfigValue("auth.oauth2_token")
+		}
+		if tok == "" {
 			tok = os.Getenv(%q)
 		}
 		if tok == "" {
 			cid := clientID
 			if cid == "" {
+				cid = getConfigValue("auth.oauth2_client_id")
+			}
+			if cid == "" {
 				cid = os.Getenv(%q)
 			}
 			csec := clientSecret
+			if csec == "" {
+				csec = getConfigValue("auth.oauth2_client_secret")
+			}
 			if csec == "" {
 				csec = os.Getenv(%q)
 			}
@@ -501,109 +928,37 @@ func fetchOAuth2Token(tokenURL, clientID, clientSecret string) (string, error) {
 	}
 	_ = base64Import
 
-	return fmt.Sprintf(`package cmd
-
-import (
-%s)
-
-var (
-	outputFormat string
-	baseURL      string
-%s%s)
-
-const defaultBaseURLTemplate = %q
-
-var version = %q
-
-var rootCmd = &cobra.Command{
-	Use:     %q,
-	Short:   %q,
-	Version: version,
-}
-
-// Execute runs the root command.
-func Execute() error {
-	return rootCmd.Execute()
-}
-
-func init() {
-	rootCmd.PersistentFlags().StringVar(&outputFormat, "output", "json", "Output format: json|table|raw")
-	rootCmd.PersistentFlags().StringVar(&baseURL, "base-url", "", "Override API base URL")
-%s%s}
-
-func getBaseURL() string {
-	if baseURL != "" {
-		return baseURL
-	}
-	if v := os.Getenv(%q); v != "" {
-		return v
-	}
-	return resolveDefaultBaseURL()
-}
-
-func resolveDefaultBaseURL() string {
-%s
-}
-
-// getAuthHeaders returns HTTP headers required for authentication.
-// Priority: CLI flag → environment variable → empty.
-func getAuthHeaders() map[string]string {
-	headers := map[string]string{}
-%s
-	return headers
-}
-
-// getAuthQueryParams returns query parameters required for authentication
-// (used when an API key scheme has in: query).
-func getAuthQueryParams() map[string]string {
-	params := map[string]string{}
-%s
-	return params
-}
-
-// writeOutput prints v as indented JSON to stdout.
-func writeOutput(v interface{}) {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		fmt.Fprintln(os.Stderr, "error encoding output:", err)
-		os.Exit(1)
-	}
-}
-
-// exitWithError prints an error as JSON to stderr and exits non-zero.
-func exitWithError(statusCode int, code, message string, raw interface{}) {
-	type errObj struct {
-		Status  int         `+"`json:\"status\"`"+`
-		Code    string      `+"`json:\"code\"`"+`
-		Message string      `+"`json:\"message\"`"+`
-		Raw     interface{} `+"`json:\"raw,omitempty\"`"+`
-	}
-	type errorWrapper struct {
-		Error errObj `+"`json:\"error\"`"+`
-	}
-	obj := errorWrapper{Error: errObj{Status: statusCode, Code: code, Message: message, Raw: raw}}
-	enc := json.NewEncoder(os.Stderr)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(obj)
-	os.Exit(1)
-	}
-%s`,
-		imports.String(),
-		authVarDecls.String(),
-		serverVarDecls.String(),
-		baseURL,
-		openAPI.Info.Version,
-		cliName,
-		description,
-		authFlagInits.String(),
-		serverVarFlagInits.String(),
-		cliUpper+"_BASE_URL",
-		defaultBaseURLResolver,
-		authHeadersBody.String(),
-		authQueryBody.String(),
-		oauth2Helper,
-	)
+	return renderTemplate("root.go.tmpl", struct {
+		Imports                string
+		AuthVarDecls           string
+		ServerVarDecls         string
+		DefaultBaseURLTemplate string
+		Version                string
+		CLIName                string
+		Description            string
+		AuthFlagInits          string
+		ServerVarFlagInits     string
+		BaseURLEnv             string
+		ResolveDefaultBaseURL  string
+		AuthHeaders            string
+		AuthQuery              string
+		OAuth2Helper           string
+	}{
+		Imports:                imports.String(),
+		AuthVarDecls:           authVarDecls.String(),
+		ServerVarDecls:         serverVarDecls.String(),
+		DefaultBaseURLTemplate: baseURL,
+		Version:                openAPI.Info.Version,
+		CLIName:                cliName,
+		Description:            description,
+		AuthFlagInits:          authFlagInits.String(),
+		ServerVarFlagInits:     serverVarFlagInits.String(),
+		BaseURLEnv:             cliUpper + "_BASE_URL",
+		ResolveDefaultBaseURL:  defaultBaseURLResolver,
+		AuthHeaders:            authHeadersBody.String(),
+		AuthQuery:              authQueryBody.String(),
+		OAuth2Helper:           oauth2Helper,
+	})
 }
 
 // commandsGoContent generates the cobra subcommands for all operations.
@@ -856,110 +1211,108 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 	return sb.String(), nil
 }
 
+// eventsGoContent generates the cobra commands for event handling.
+func eventsGoContent(cliName string, defs []eventDefinition) (string, error) {
+	return renderTemplate("events.go.tmpl", struct {
+		CLIName          string
+		EventDefinitions string
+		WebhookSecretEnv string
+	}{
+		CLIName:          cliName,
+		EventDefinitions: eventDefinitionsLiteral(defs),
+		WebhookSecretEnv: strings.ToUpper(strings.ReplaceAll(cliName, "-", "_")) + "_WEBHOOK_SECRET",
+	})
+}
+
+func eventDefinitionsLiteral(defs []eventDefinition) string {
+	var sb strings.Builder
+	for _, def := range defs {
+		methods := make([]string, 0, len(def.Methods))
+		for _, method := range def.Methods {
+			methods = append(methods, fmt.Sprintf("%q", method))
+		}
+		_, _ = fmt.Fprintf(&sb, "\t{\n")
+		_, _ = fmt.Fprintf(&sb, "\t\tName: %q,\n", def.Name)
+		_, _ = fmt.Fprintf(&sb, "\t\tDisplayName: %q,\n", def.DisplayName)
+		_, _ = fmt.Fprintf(&sb, "\t\tSource: %q,\n", def.Source)
+		_, _ = fmt.Fprintf(&sb, "\t\tExpression: %q,\n", def.Expression)
+		_, _ = fmt.Fprintf(&sb, "\t\tDefaultPath: %q,\n", def.DefaultPath)
+		_, _ = fmt.Fprintf(&sb, "\t\tMethods: []string{%s},\n", strings.Join(methods, ", "))
+		_, _ = fmt.Fprintf(&sb, "\t\tDefaultMethod: %q,\n", def.DefaultMethod)
+		_, _ = fmt.Fprintf(&sb, "\t\tSummary: %q,\n", def.Summary)
+		_, _ = fmt.Fprintf(&sb, "\t\tDescription: %q,\n", def.Description)
+		_, _ = fmt.Fprintf(&sb, "\t\tSampleJSON: %q,\n", def.SampleJSON)
+		_, _ = fmt.Fprintf(&sb, "\t\tSignatureMode: %q,\n", def.SignatureMode)
+		_, _ = fmt.Fprintf(&sb, "\t\tSignatureHeader: %q,\n", def.SignatureHeader)
+		_, _ = fmt.Fprintf(&sb, "\t\tSignatureAlgorithm: %q,\n", def.SignatureAlgorithm)
+		_, _ = fmt.Fprintf(&sb, "\t\tSignatureIncludeTimestamp: %t,\n", def.SignatureIncludeTimestamp)
+		_, _ = fmt.Fprintf(&sb, "\t\tSignatureTimestampHeader: %q,\n", def.SignatureTimestampHeader)
+		_, _ = fmt.Fprintf(&sb, "\t},\n")
+	}
+	return sb.String()
+}
+
+// internalEventsGoContent generates helpers for local event listening.
+func internalEventsGoContent() (string, error) {
+	return renderTemplate("internal_events.go.tmpl", nil)
+}
+
+func configGoContent(cliName string) (string, error) {
+	return renderTemplate("config.go.tmpl", struct {
+		CLIName string
+	}{
+		CLIName: cliName,
+	})
+}
+
+func internalConfigGoContent(cliName string) (string, error) {
+	return renderTemplate("internal_config.go.tmpl", struct {
+		CLIName string
+	}{
+		CLIName: cliName,
+	})
+}
+
+func authGoContent(cliName string, defs []authSchemeDefinition) (string, error) {
+	return renderTemplate("auth.go.tmpl", struct {
+		CLIName     string
+		AuthSchemes string
+	}{
+		CLIName:     cliName,
+		AuthSchemes: authSchemeDefinitionsLiteral(defs),
+	})
+}
+
 // clientGoContent generates the internal/client/client.go content.
-func clientGoContent(openAPI *spec.OpenAPI) string {
+func clientGoContent(openAPI *spec.OpenAPI) (string, error) {
 	baseURL := ""
 	if len(openAPI.Servers) > 0 {
 		baseURL = openAPI.Servers[0].URL
 	}
 
-	return fmt.Sprintf(`package client
-
-import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
-)
-
-// DefaultBaseURL is the default server URL.
-const DefaultBaseURL = %q
-
-// Client is an HTTP API client.
-type Client struct {
-	BaseURL    string
-	Headers    map[string]string
-	HTTPClient *http.Client
+	return renderTemplate("client.go.tmpl", struct {
+		DefaultBaseURL string
+	}{
+		DefaultBaseURL: baseURL,
+	})
 }
 
-// Response holds an API response.
-type Response struct {
-	StatusCode int
-	Body       string
-	Raw        interface{}
-}
-
-// NewClient creates a new Client.
-func NewClient(baseURL string, headers map[string]string) *Client {
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
+func authSchemeDefinitionsLiteral(defs []authSchemeDefinition) string {
+	var sb strings.Builder
+	for _, def := range defs {
+		_, _ = fmt.Fprintf(&sb, "\t{\n")
+		_, _ = fmt.Fprintf(&sb, "\t\tName: %q,\n", def.Name)
+		_, _ = fmt.Fprintf(&sb, "\t\tConfigKey: %q,\n", def.ConfigKey)
+		_, _ = fmt.Fprintf(&sb, "\t\tType: %q,\n", def.Type)
+		_, _ = fmt.Fprintf(&sb, "\t\tAuthorizationURL: %q,\n", def.AuthorizationURL)
+		_, _ = fmt.Fprintf(&sb, "\t\tTokenURL: %q,\n", def.TokenURL)
+		_, _ = fmt.Fprintf(&sb, "\t\tHasClientCredentials: %t,\n", def.HasClientCredentials)
+		_, _ = fmt.Fprintf(&sb, "\t\tHasPasswordFlow: %t,\n", def.HasPasswordFlow)
+		_, _ = fmt.Fprintf(&sb, "\t\tHasAuthorizationCode: %t,\n", def.HasAuthorizationCode)
+		_, _ = fmt.Fprintf(&sb, "\t\tHasImplicitFlow: %t,\n", def.HasImplicitFlow)
+		_, _ = fmt.Fprintf(&sb, "\t},\n")
 	}
-	return &Client{
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-		Headers:    headers,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
-	}
-}
-
-// Do executes an HTTP request.
-func (c *Client) Do(method, path string, query map[string]string, body []byte, extraHeaders ...map[string]string) (*Response, error) {
-	fullURL := c.BaseURL + path
-	if len(query) > 0 {
-		params := url.Values{}
-		for k, v := range query {
-			params.Set(k, v)
-		}
-		fullURL += "?" + params.Encode()
-	}
-
-	var bodyReader io.Reader
-	if body != nil {
-		bodyReader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequest(method, fullURL, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %%w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	for k, v := range c.Headers {
-		req.Header.Set(k, v)
-	}
-	for _, eh := range extraHeaders {
-		for k, v := range eh {
-			req.Header.Set(k, v)
-		}
-	}
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("making request: %%w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response: %%w", err)
-	}
-
-	var raw interface{}
-	if len(respBody) > 0 {
-		_ = json.Unmarshal(respBody, &raw)
-	}
-
-	return &Response{
-		StatusCode: resp.StatusCode,
-		Body:       string(respBody),
-		Raw:        raw,
-	}, nil
-}
-	`, baseURL)
+	return sb.String()
 }
 
 // --- Naming helpers ---
