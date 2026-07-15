@@ -18,12 +18,15 @@ This repository uses an implementation-first workflow for all feature work.
    - Update `skills/climate.md` and `skills/climate-generator/SKILL.md` when
      command set or workflows change.
 6. **Validate locally**
-   - Run:
-     - `go build ./...`
-     - `go test ./...`
+   - Run `make verify` (fmt-check + vet + build + lint + `go test -race`).
+     This mirrors the CI pipeline and is mandatory before every push.
    - Run targeted tests during development for faster feedback.
 7. **Validate CI health**
    - Ensure PR checks are green before merge.
+   - After merge, confirm CI on `main` is green:
+     `gh run list --branch main --workflow CI --limit 1`.
+   - A task is not done until post-merge CI on `main` is green. If it is red,
+     fixing it is part of the same task — do not stop or hand off.
 8. **Commit discipline**
    - Small, meaningful commits with clear messages.
 9. **Push and PR hygiene**
@@ -33,6 +36,11 @@ This repository uses an implementation-first workflow for all feature work.
 ## Quality rules
 
 - Do not remove or weaken unrelated tests.
+- Tests must be hermetic: they must not depend on the developer's machine or
+  global state. Tests that shell out to external tools (e.g. `git`) must set
+  the environment explicitly (`t.Setenv` for `GIT_AUTHOR_*`/`GIT_COMMITTER_*`,
+  temp `HOME`, etc.) so they pass on a bare CI runner. "Passes on my machine"
+  is not evidence.
 - Do not introduce breaking CLI changes without docs + migration notes.
 - Prefer deterministic behavior (sorted output, stable iteration).
 - Keep generated/manifest behavior backward compatible where practical.
@@ -43,6 +51,6 @@ This repository uses an implementation-first workflow for all feature work.
 - [ ] README/docs updated
 - [ ] Skills updated
 - [ ] Tests added/updated
-- [ ] `go build ./...` passes
-- [ ] `go test ./...` passes
-- [ ] CI checks green
+- [ ] `make verify` passes locally
+- [ ] PR CI checks green
+- [ ] Post-merge CI on `main` green (`gh run list --branch main --workflow CI --limit 1`)
