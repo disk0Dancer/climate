@@ -19,7 +19,9 @@ func TestSyncGitRepositoryExistingRepoPreservesRemoteFiles(t *testing.T) {
 	t.Setenv("GIT_COMMITTER_EMAIL", "climate@example.test")
 
 	remoteBare := filepath.Join(t.TempDir(), "remote.git")
-	if err := runGit("", "init", "--bare", remoteBare); err != nil {
+	// --initial-branch pins the bare repo's HEAD to main; otherwise it depends
+	// on the machine's init.defaultBranch and clones may check out nothing.
+	if err := runGit("", "init", "--bare", "--initial-branch=main", remoteBare); err != nil {
 		t.Fatalf("init bare repo: %v", err)
 	}
 
