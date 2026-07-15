@@ -10,6 +10,14 @@ import (
 )
 
 func TestSyncGitRepositoryExistingRepoPreservesRemoteFiles(t *testing.T) {
+	// syncGitRepository commits in its own clone, so the identity must come
+	// from the environment rather than per-repo config; CI runners have no
+	// global git identity.
+	t.Setenv("GIT_AUTHOR_NAME", "climate")
+	t.Setenv("GIT_AUTHOR_EMAIL", "climate@example.test")
+	t.Setenv("GIT_COMMITTER_NAME", "climate")
+	t.Setenv("GIT_COMMITTER_EMAIL", "climate@example.test")
+
 	remoteBare := filepath.Join(t.TempDir(), "remote.git")
 	if err := runGit("", "init", "--bare", remoteBare); err != nil {
 		t.Fatalf("init bare repo: %v", err)
