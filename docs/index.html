@@ -214,6 +214,10 @@ sudo mv climate-darwin-arm64 /usr/local/bin/climate</code></pre>
           <h3>Webhook listener</h3>
           <p>List, receive, and emit named callbacks/webhooks, with cloudflared exposure, local profiles, and configurable HMAC signatures.</p>
         </div>
+        <div class="mini">
+          <h3>Secret storage</h3>
+          <p><span class="ic">config set --secret</span> values (and <span class="ic">auth login</span> tokens) are encrypted at rest — never plaintext in <span class="ic">config.json</span>. gopass is used when its store is initialized, otherwise an age-encrypted local file. Override with <span class="ic">&lt;CLINAME&gt;_SECRETS_BACKEND=gopass|file|plaintext</span>.</p>
+        </div>
       </div>
     </section>
 

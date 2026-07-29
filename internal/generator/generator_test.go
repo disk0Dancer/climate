@@ -748,8 +748,8 @@ func TestFileBackendMigrationOnLoad(t *testing.T) {
 	if err := json.Unmarshal(raw, &onDisk); err != nil {
 		t.Fatalf("parse config: %v", err)
 	}
-	if got := onDisk.Profiles["default"].Secrets["auth.bearer_token"]; got != "ref" {
-		t.Fatalf("on-disk secret marker = %q, want ref", got)
+	if got := onDisk.Profiles["default"].Secrets["auth.bearer_token"]; got != "\x00climate-secret-ref\x00" {
+		t.Fatalf("on-disk secret marker = %q, want the reference sentinel", got)
 	}
 }
 `
@@ -890,9 +890,12 @@ func TestGopassPresentButUninitializedFallsBackToFile(t *testing.T) {
 	gocache := filepath.Join(outDir, ".gocache")
 
 	// Generate a go.sum for the generated module (it now depends on
-	// filippo.io/age). This reuses the inherited module cache, which the
-	// climate module already populates because it pins the same dependencies
-	// (see tools.go). The test build below then runs fully offline.
+	// filippo.io/age). tidy is the one step allowed to reach the module proxy:
+	// a fresh module depending on cobra v1.8.0 (a pre-pruning go 1.15 module)
+	// and age must resolve the full graph including transitive *test*
+	// dependencies (e.g. c2sp.org/CCTV/age), which a pruned/empty cache does
+	// not contain. The build and test steps below run fully offline
+	// (GOPROXY=off), which is what proves the generated CLI needs no network.
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = outDir
 	tidy.Env = append(os.Environ(),
@@ -939,6 +942,9 @@ func TestGeneratedSecretRoundTripFileBackendBuild(t *testing.T) {
 		"GOSUMDB=off",
 	)
 
+	// tidy resolves the full module graph (incl. transitive test deps) and so
+	// needs the proxy once; the build below is offline (GOPROXY=off), proving
+	// the generated CLI builds without network.
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = outDir
 	tidy.Env = env

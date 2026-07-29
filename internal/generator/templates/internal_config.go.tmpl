@@ -16,8 +16,10 @@ const (
 	defaultProfile = "default"
 
 	// secretRef marks a secret key whose value lives in the resolved secrets
-	// backend rather than inline in config.json.
-	secretRef = "ref"
+	// backend rather than inline in config.json. The NUL-delimited sentinel is
+	// chosen so it can never collide with a real (legacy plaintext) secret
+	// value: JSON string values produced by this CLI never contain NUL bytes.
+	secretRef = "\x00climate-secret-ref\x00"
 )
 
 // Profile is one named configuration profile.
@@ -157,6 +159,10 @@ func (s *Store) MigrateSecrets(target string) error {
 					return gErr
 				}
 				if !ok {
+					// The key references the backend but the value is gone.
+					// Drop the dangling marker instead of carrying a ghost
+					// entry that config list shows but no read can resolve.
+					delete(cfg.Secrets, key)
 					continue
 				}
 				value = v

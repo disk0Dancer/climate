@@ -67,6 +67,9 @@ Override the choice with `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`
 are migrated into the backend automatically on first use. The resolved backend
 appears as `secrets_backend` in `config list` output.
 
+Because the encrypted file backend uses `filippo.io/age`, generated CLIs now
+require **Go 1.24 or newer** to build (raised from 1.21).
+
 ## Agent skill
 
 An agent with climate can build its own tools. Point it at any OpenAPI spec —

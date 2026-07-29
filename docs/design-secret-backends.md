@@ -132,7 +132,10 @@ true, which is not a behavior change worth announcing per invocation.
   `secrets_backend` field, migration hook in `Load()`.
 - `auth.go.tmpl` / `config.go.tmpl`: no UX changes; error paths now can return
   backend errors.
-- `go.mod` template gains `filippo.io/age`.
+- `go.mod` template gains `filippo.io/age`. This raises the generated CLI's
+  minimum Go version from 1.21 to **1.24**, because `filippo.io/age` v1.3.1 and
+  its `golang.org/x/crypto` dependency declare `go 1.24.0`. Building a generated
+  CLI now requires Go 1.24 or newer.
 - `climate upgrade <cli>` regenerates with the new store; migration then runs
   on the upgraded CLI's first invocation.
 - New generated command (hidden from prominent help):

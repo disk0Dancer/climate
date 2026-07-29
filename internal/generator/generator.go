@@ -611,6 +611,12 @@ func writeFile(path, content string) error {
 }
 
 // goModContent returns the go.mod content for a generated CLI.
+//
+// The go directive is 1.24 (raised from the earlier 1.21) because the secrets
+// backend depends on filippo.io/age v1.3.1, whose module — along with its
+// golang.org/x/crypto dependency — declares `go 1.24.0`. Generated CLIs
+// therefore require Go 1.24+ to build; this is documented in
+// docs/design-secret-backends.md and the README secret-storage section.
 func goModContent(cliName string) string {
 	return fmt.Sprintf(`module %s
 

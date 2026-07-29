@@ -48,12 +48,23 @@ License: Apache-2.0
 - <cli> config unset <key>
 - <cli> config profiles list|create|use
 - <cli> config set --secret events.signing_secret <value>
+- <cli> config secrets migrate --to gopass|file|plaintext (hidden; move secrets between backends)
 - <cli> auth login [--scheme <name>]
 - <cli> auth status
 - <cli> auth logout [--scheme <name>]
 - <cli> events list
 - <cli> events listen [event-name] [--host 127.0.0.1] [--port 8081] [--path /] [--tunnel none|auto|cloudflared] [--signature-mode none|hmac]
 - <cli> events emit <event-name> --target-url <url> [--data-json <json>] [--data-file <path>] [--signature-mode none|hmac]
+
+## Secret storage (generated CLIs)
+
+- Secrets from `config set --secret` and `auth login` are encrypted at rest; config.json holds only a `secrets_backend` marker plus a per-key reference, never plaintext.
+- Backend resolution order (once per process): env override `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`; then gopass if its binary is on PATH and `gopass ls --flat` succeeds; then an age-encrypted local file fallback.
+- gopass path convention: climate/<cli-name>/<profile>/<key>
+- File backend: secrets.age blob plus a 0600 identity.age (age identity generated on first use) in the CLI's config directory.
+- The resolved backend is pinned as `secrets_backend` in config.json and reported in `config list` JSON output.
+- Legacy plaintext secrets are migrated into the backend silently on first use.
+- Generated CLIs require Go 1.24+ to build because the file backend uses filippo.io/age.
 
 ## Ops
 
@@ -64,3 +75,4 @@ License: Apache-2.0
 - Generated event listener design: https://github.com/disk0Dancer/climate/blob/main/docs/design-generated-events.md
 - Shell completion design: https://github.com/disk0Dancer/climate/blob/main/docs/design-shell-completions.md
 - Uninstall design: https://github.com/disk0Dancer/climate/blob/main/docs/design-uninstall.md
+- Encrypted secret backends design: https://github.com/disk0Dancer/climate/blob/main/docs/design-secret-backends.md
