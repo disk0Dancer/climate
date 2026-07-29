@@ -52,8 +52,8 @@ func getConfigValue(key string) string {
 	if err != nil {
 		return ""
 	}
-	value, ok := store.Get(key)
-	if !ok {
+	value, ok, err := store.Get(key)
+	if err != nil || !ok {
 		return ""
 	}
 	return value

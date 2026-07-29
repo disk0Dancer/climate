@@ -191,12 +191,14 @@ func EventNames(defs []EventDefinition) []string {
 }
 
 // ResolveString applies flag > config > event default > hard default precedence.
-func ResolveString(flagChanged bool, flagValue string, store interface{ Get(string) (string, bool) }, key string, eventDefault string, hardDefault string) string {
+func ResolveString(flagChanged bool, flagValue string, store interface {
+	Get(string) (string, bool, error)
+}, key string, eventDefault string, hardDefault string) string {
 	if flagChanged && strings.TrimSpace(flagValue) != "" {
 		return flagValue
 	}
 	if store != nil {
-		if value, ok := store.Get(key); ok && strings.TrimSpace(value) != "" {
+		if value, ok, err := store.Get(key); err == nil && ok && strings.TrimSpace(value) != "" {
 			return value
 		}
 	}
@@ -207,12 +209,14 @@ func ResolveString(flagChanged bool, flagValue string, store interface{ Get(stri
 }
 
 // ResolveBool applies flag > config > event default > hard default precedence.
-func ResolveBool(flagChanged bool, flagValue bool, store interface{ Get(string) (string, bool) }, key string, eventDefault bool, hardDefault bool) bool {
+func ResolveBool(flagChanged bool, flagValue bool, store interface {
+	Get(string) (string, bool, error)
+}, key string, eventDefault bool, hardDefault bool) bool {
 	if flagChanged {
 		return flagValue
 	}
 	if store != nil {
-		if value, ok := store.Get(key); ok {
+		if value, ok, err := store.Get(key); err == nil && ok {
 			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
 			if err == nil {
 				return parsed

@@ -7,11 +7,19 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	sec "{{.CLIName}}/internal/secrets"
 )
 
 const (
 	appName        = {{printf "%q" .CLIName}}
 	defaultProfile = "default"
+
+	// secretRef marks a secret key whose value lives in the resolved secrets
+	// backend rather than inline in config.json. The NUL-delimited sentinel is
+	// chosen so it can never collide with a real (legacy plaintext) secret
+	// value: JSON string values produced by this CLI never contain NUL bytes.
+	secretRef = "\x00climate-secret-ref\x00"
 )
 
 // Profile is one named configuration profile.
@@ -22,9 +30,13 @@ type Profile struct {
 
 // Store is the local profile store for the generated CLI.
 type Store struct {
-	Active   string              `json:"active"`
-	Profiles map[string]*Profile `json:"profiles"`
-	path     string
+	Active         string              `json:"active"`
+	Profiles       map[string]*Profile `json:"profiles"`
+	SecretsBackend string              `json:"secrets_backend,omitempty"`
+	path           string
+	// secrets is the resolved secret backend. A nil value means the plaintext
+	// (legacy) backend, where secret values are stored inline in Profiles.
+	secrets sec.Store
 }
 
 // MaskedEntry is one config entry prepared for user-facing listing.
@@ -43,7 +55,11 @@ func Load() (*Store, error) {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return newStore(path), nil
+		store := newStore(path)
+		if err := store.initSecrets(); err != nil {
+			return nil, err
+		}
+		return store, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
@@ -55,7 +71,120 @@ func Load() (*Store, error) {
 	}
 	store.path = path
 	store.ensureDefaults()
+	if err := store.initSecrets(); err != nil {
+		return nil, err
+	}
 	return &store, nil
+}
+
+// initSecrets resolves the secret backend and migrates any legacy plaintext
+// secrets into it. The resolved backend name is recorded in memory and
+// persisted on the next save (migration saves immediately when it changes
+// anything).
+func (s *Store) initSecrets() error {
+	backend, name, err := sec.Resolve(s.SecretsBackend)
+	if err != nil {
+		return err
+	}
+	s.secrets = backend
+	s.SecretsBackend = name
+	if s.secrets == nil {
+		return nil
+	}
+	migrated, err := s.migratePlaintextSecrets()
+	if err != nil {
+		return err
+	}
+	if migrated {
+		return s.Save()
+	}
+	return nil
+}
+
+// migratePlaintextSecrets moves inline plaintext secret values (values other
+// than the reference marker) into the resolved backend, replacing them with
+// the marker. It reports whether anything changed.
+func (s *Store) migratePlaintextSecrets() (bool, error) {
+	changed := false
+	for profileName, cfg := range s.Profiles {
+		if cfg == nil {
+			continue
+		}
+		keys := make([]string, 0, len(cfg.Secrets))
+		for key := range cfg.Secrets {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if cfg.Secrets[key] == secretRef {
+				continue
+			}
+			if err := s.secrets.Set(profileName, key, cfg.Secrets[key]); err != nil {
+				return changed, fmt.Errorf("migrating secret %q: %w", key, err)
+			}
+			cfg.Secrets[key] = secretRef
+			changed = true
+		}
+	}
+	return changed, nil
+}
+
+// MigrateSecrets moves every secret to the named backend and records it as the
+// active backend.
+func (s *Store) MigrateSecrets(target string) error {
+	target = strings.TrimSpace(target)
+	if target == s.SecretsBackend {
+		return nil
+	}
+	dest, err := sec.Open(target)
+	if err != nil {
+		return err
+	}
+	old := s.secrets
+	for profileName, cfg := range s.Profiles {
+		if cfg == nil {
+			continue
+		}
+		keys := make([]string, 0, len(cfg.Secrets))
+		for key := range cfg.Secrets {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			marker := cfg.Secrets[key]
+			value := marker
+			if old != nil && marker == secretRef {
+				v, ok, gErr := old.Get(profileName, key)
+				if gErr != nil {
+					return gErr
+				}
+				if !ok {
+					// The key references the backend but the value is gone.
+					// Drop the dangling marker instead of carrying a ghost
+					// entry that config list shows but no read can resolve.
+					delete(cfg.Secrets, key)
+					continue
+				}
+				value = v
+			}
+			if dest != nil {
+				if sErr := dest.Set(profileName, key, value); sErr != nil {
+					return sErr
+				}
+				cfg.Secrets[key] = secretRef
+			} else {
+				cfg.Secrets[key] = value
+			}
+			if old != nil && marker == secretRef {
+				if _, uErr := old.Unset(profileName, key); uErr != nil {
+					return uErr
+				}
+			}
+		}
+	}
+	s.secrets = dest
+	s.SecretsBackend = target
+	return s.Save()
 }
 
 func newStore(path string) *Store {
@@ -179,38 +308,60 @@ func (s *Store) UseProfile(name string) error {
 	return nil
 }
 
-// Set stores a key/value pair in the active profile. Secret keys are
-// masked in list output.
-func (s *Store) Set(key, value string, secret bool) {
+// Set stores a key/value pair in the active profile. Secret values are written
+// to the resolved secrets backend (encrypted at rest) unless the plaintext
+// backend is active, in which case they stay inline and masked in list output.
+func (s *Store) Set(key, value string, secret bool) error {
 	key = strings.TrimSpace(key)
 	cfg := s.ActiveProfile()
 	delete(cfg.Properties, key)
-	delete(cfg.Secrets, key)
 	if secret {
+		if s.secrets != nil {
+			if err := s.secrets.Set(s.Active, key, value); err != nil {
+				return err
+			}
+			cfg.Secrets[key] = secretRef
+			return nil
+		}
 		cfg.Secrets[key] = value
-		return
+		return nil
 	}
+	if marker, was := cfg.Secrets[key]; was && s.secrets != nil && marker == secretRef {
+		if _, err := s.secrets.Unset(s.Active, key); err != nil {
+			return err
+		}
+	}
+	delete(cfg.Secrets, key)
 	cfg.Properties[key] = value
+	return nil
 }
 
 // Unset removes a key from the active profile.
-func (s *Store) Unset(key string) bool {
+func (s *Store) Unset(key string) (bool, error) {
 	cfg := s.ActiveProfile()
 	_, propertyExists := cfg.Properties[key]
-	_, secretExists := cfg.Secrets[key]
+	marker, secretExists := cfg.Secrets[key]
 	delete(cfg.Properties, key)
 	delete(cfg.Secrets, key)
-	return propertyExists || secretExists
+	if secretExists && s.secrets != nil && marker == secretRef {
+		if _, err := s.secrets.Unset(s.Active, key); err != nil {
+			return false, err
+		}
+	}
+	return propertyExists || secretExists, nil
 }
 
 // Get returns a config value from the active profile.
-func (s *Store) Get(key string) (string, bool) {
+func (s *Store) Get(key string) (string, bool, error) {
 	cfg := s.ActiveProfile()
-	if value, ok := cfg.Secrets[key]; ok {
-		return value, true
+	if marker, ok := cfg.Secrets[key]; ok {
+		if s.secrets != nil && marker == secretRef {
+			return s.secrets.Get(s.Active, key)
+		}
+		return marker, true, nil
 	}
 	value, ok := cfg.Properties[key]
-	return value, ok
+	return value, ok, nil
 }
 
 // MaskedEntries returns active-profile entries sorted by key with secrets masked.

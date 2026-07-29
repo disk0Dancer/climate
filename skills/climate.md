@@ -76,6 +76,13 @@ events.signing_secret ...` stores the signing secret for later use. `--tunnel
 auto` exposes the listener through `cloudflared`. HMAC signing is configurable
 via header name, algorithm, and optional timestamp signing.
 
+Secret values (`config set --secret` and tokens from `auth login`) are
+encrypted at rest, never plaintext in `config.json`: gopass is used when its
+store is initialized, otherwise an age-encrypted local file. Override with
+`<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`. The hidden
+`<cli-name> config secrets migrate --to gopass|file|plaintext` moves existing
+secrets between backends.
+
 ---
 
 ### Compose multiple specs into one facade CLI

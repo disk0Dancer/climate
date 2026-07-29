@@ -39,6 +39,7 @@ petstore pet get --pet-id 1
 - Body → `--data-json` / `--data-file`
 - Auth via env vars (API key, bearer, basic, OAuth2)
 - Config + auth + event commands → `<cli> config profiles ...`, `<cli> config set/get`, `<cli> auth ...`, `<cli> events ...`
+- Secrets encrypted at rest → gopass when available, else an age-encrypted local file; override with `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`
 
 Example generated-CLI workflow:
 
@@ -49,6 +50,32 @@ myapi auth login
 myapi config set --secret events.signing_secret supersecret
 myapi events listen payment-succeeded --port 8081 --tunnel auto --signature-mode hmac
 ```
+
+## Secret storage
+
+Values set with `config set --secret` (and tokens written by `auth login`) are
+encrypted at rest — they are never stored as plaintext in `config.json`, which
+keeps only a `secrets_backend` marker plus a reference per secret key. The
+backend is resolved automatically, once per process:
+
+- **gopass** when the `gopass` binary is on `PATH` and its store is initialized
+  (`gopass ls --flat` succeeds). Secrets live under the path convention
+  `climate/<cli-name>/<profile>/<key>`.
+- otherwise an **age-encrypted local file** (`secrets.age`, alongside a `0600`
+  `identity.age` generated on first use) in the CLI's config directory.
+
+The resolved choice is pinned as `secrets_backend` in `config.json` so a machine
+that later gains gopass does not split secrets across two backends, and it shows
+up in `config list` JSON output. Legacy plaintext secrets from older CLIs are
+migrated into the backend silently on first use.
+
+Override the automatic choice with the env var
+`<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext` (`plaintext` restores the
+legacy inline behavior). Move existing secrets between backends with the hidden
+command `<cli> config secrets migrate --to gopass|file|plaintext`.
+
+Because the encrypted file backend uses `filippo.io/age`, generated CLIs now
+require **Go 1.24 or newer** to build.
 
 ## Demo
 
@@ -101,6 +128,7 @@ npx skills add https://github.com/disk0Dancer/climate --skill climate-generator
 - [Generated event listener design](./design-generated-events.md)
 - [Shell completion design](./design-shell-completions.md)
 - [Uninstall design](./design-uninstall.md)
+- [Encrypted secret backends design](./design-secret-backends.md)
 - [OpenAPI 3.0 support matrix](./openapi-3-support-matrix.md)
 
 ## License

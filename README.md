@@ -51,6 +51,25 @@ myapi events listen payment-succeeded --port 8081 --tunnel auto --signature-mode
 myapi events emit payment-succeeded --target-url http://localhost:8081/webhooks/payment-succeeded --signature-mode hmac
 ```
 
+### Secret storage
+
+Values set with `config set --secret` (and tokens written by `auth login`) are
+encrypted at rest — they are never stored as plaintext in `config.json`. The
+backend is chosen automatically:
+
+- **gopass** when the `gopass` binary is installed and its store is
+  initialized (secrets land under `climate/<cli-name>/<profile>/<key>`);
+- otherwise an **age-encrypted local file** (`secrets.age`, with a `0600`
+  `identity.age`) in the CLI's config directory.
+
+Override the choice with `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`
+(`plaintext` restores the legacy inline behavior). Existing plaintext secrets
+are migrated into the backend automatically on first use. The resolved backend
+appears as `secrets_backend` in `config list` output.
+
+Because the encrypted file backend uses `filippo.io/age`, generated CLIs now
+require **Go 1.24 or newer** to build (raised from 1.21).
+
 ## Agent skill
 
 An agent with climate can build its own tools. Point it at any OpenAPI spec —

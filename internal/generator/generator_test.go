@@ -177,6 +177,7 @@ func TestGenerateCreatesFiles(t *testing.T) {
 		"cmd/events.go",
 		"internal/client/client.go",
 		"internal/config/config.go",
+		"internal/secrets/secrets.go",
 		"internal/events/events.go",
 		"climate_meta.json",
 	}
@@ -525,6 +526,7 @@ func TestGeneratedGoFilesParse(t *testing.T) {
 		filepath.Join(outDir, "cmd", "events.go"),
 		filepath.Join(outDir, "internal", "client", "client.go"),
 		filepath.Join(outDir, "internal", "config", "config.go"),
+		filepath.Join(outDir, "internal", "secrets", "secrets.go"),
 		filepath.Join(outDir, "internal", "events", "events.go"),
 	}
 
@@ -665,10 +667,15 @@ func TestHMACVerificationWithTimestamp(t *testing.T) {
 
 	configTestContent := `package config
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestConfigurationsLifecycle(t *testing.T) {
-	store := newStore("/tmp/config.json")
+	store := newStore(filepath.Join(t.TempDir(), "config.json"))
 	if store.ActiveProfileName() != "default" {
 		t.Fatalf("active = %q", store.ActiveProfileName())
 	}
@@ -678,16 +685,71 @@ func TestConfigurationsLifecycle(t *testing.T) {
 	if err := store.UseProfile("work"); err != nil {
 		t.Fatalf("UseProfile() error = %v", err)
 	}
-	store.Set("core.base_url", "https://api.example.test", false)
-	store.Set("events.signing_secret", "secret", true)
-	if value, ok := store.Get("core.base_url"); !ok || value != "https://api.example.test" {
-		t.Fatalf("Get(core.base_url) = %q, %v", value, ok)
+	if err := store.Set("core.base_url", "https://api.example.test", false); err != nil {
+		t.Fatalf("Set() error = %v", err)
 	}
-	if value, ok := store.Get("events.signing_secret"); !ok || value != "secret" {
-		t.Fatalf("Get(events.signing_secret) = %q, %v", value, ok)
+	if err := store.Set("events.signing_secret", "secret", true); err != nil {
+		t.Fatalf("Set() error = %v", err)
 	}
-	if !store.Unset("core.base_url") {
-		t.Fatal("Unset(core.base_url) should return true")
+	if value, ok, err := store.Get("core.base_url"); err != nil || !ok || value != "https://api.example.test" {
+		t.Fatalf("Get(core.base_url) = %q, %v, %v", value, ok, err)
+	}
+	if value, ok, err := store.Get("events.signing_secret"); err != nil || !ok || value != "secret" {
+		t.Fatalf("Get(events.signing_secret) = %q, %v, %v", value, ok, err)
+	}
+	removed, err := store.Unset("core.base_url")
+	if err != nil || !removed {
+		t.Fatalf("Unset(core.base_url) = %v, %v", removed, err)
+	}
+}
+
+// TestFileBackendMigrationOnLoad seeds a legacy plaintext config.json and
+// asserts that Load migrates the value into the encrypted file backend and
+// rewrites the inline value with a reference marker.
+func TestFileBackendMigrationOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	t.Setenv("PETSTORE_SECRETS_BACKEND", "file")
+
+	cfgPath, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	legacy := ` + "`" + `{"active":"default","profiles":{"default":{"properties":{},"secrets":{"auth.bearer_token":"legacy-plain"}}}}` + "`" + `
+	if err := os.WriteFile(cfgPath, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	store, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if store.SecretsBackend != "file" {
+		t.Fatalf("SecretsBackend = %q, want file", store.SecretsBackend)
+	}
+	value, ok, err := store.Get("auth.bearer_token")
+	if err != nil || !ok || value != "legacy-plain" {
+		t.Fatalf("Get after migration = %q, %v, %v", value, ok, err)
+	}
+
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var onDisk struct {
+		Profiles map[string]struct {
+			Secrets map[string]string ` + "`" + `json:"secrets"` + "`" + `
+		} ` + "`" + `json:"profiles"` + "`" + `
+	}
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if got := onDisk.Profiles["default"].Secrets["auth.bearer_token"]; got != "\x00climate-secret-ref\x00" {
+		t.Fatalf("on-disk secret marker = %q, want the reference sentinel", got)
 	}
 }
 `
@@ -696,24 +758,258 @@ func TestConfigurationsLifecycle(t *testing.T) {
 		t.Fatalf("WriteFile(%s) error = %v", configTestPath, err)
 	}
 
-	packageDir, err := os.Getwd()
+	secretsTestContent := `package secrets
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+func TestFileBackendRoundTripAndIdentityPerms(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+
+	store, err := Open(BackendFile)
 	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
+		t.Fatalf("Open(file) error = %v", err)
 	}
-	repoRoot := filepath.Clean(filepath.Join(packageDir, "..", ".."))
-	gomodcache := filepath.Join(repoRoot, ".cache", "go-mod")
+	if store.Name() != BackendFile {
+		t.Fatalf("Name = %q", store.Name())
+	}
+	if err := store.Set("default", "k", "v"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	got, ok, err := store.Get("default", "k")
+	if err != nil || !ok || got != "v" {
+		t.Fatalf("Get() = %q, %v, %v", got, ok, err)
+	}
+	keys, err := store.List("default")
+	if err != nil || len(keys) != 1 || keys[0] != "k" {
+		t.Fatalf("List() = %v, %v", keys, err)
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(base, appName, "identity.age"))
+	if err != nil {
+		t.Fatalf("identity not created: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("identity perms = %v, want 0600", info.Mode().Perm())
+	}
+	removed, err := store.Unset("default", "k")
+	if err != nil || !removed {
+		t.Fatalf("Unset() = %v, %v", removed, err)
+	}
+	if _, ok, _ := store.Get("default", "k"); ok {
+		t.Fatal("value should be gone after Unset")
+	}
+}
+
+func writeFakeGopass(t *testing.T, initialized bool) {
+	t.Helper()
+	binDir := t.TempDir()
+	storeDir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"store=\"${GOPASS_FAKE_STORE:?}\"\n" +
+		"cmd=\"$1\"; shift\n" +
+		"case \"$cmd\" in\n" +
+		"  ls) shift; prefix=\"$1\"; if [ -z \"$GOPASS_FAKE_INIT\" ]; then exit 1; fi; if [ -z \"$prefix\" ]; then exit 0; fi; find \"$store\" -type f 2>/dev/null | sed \"s#^$store/##\" | grep \"^$prefix\" || true; exit 0;;\n" +
+		"  show) shift; p=\"$1\"; if [ -f \"$store/$p\" ]; then cat \"$store/$p\"; exit 0; else echo 'entry is not in the password store' >&2; exit 1; fi;;\n" +
+		"  insert) shift; p=\"$1\"; mkdir -p \"$(dirname \"$store/$p\")\"; cat > \"$store/$p\"; exit 0;;\n" +
+		"  rm) shift; p=\"$1\"; if [ -f \"$store/$p\" ]; then rm -f \"$store/$p\"; exit 0; else echo 'entry is not in the password store' >&2; exit 1; fi;;\n" +
+		"  *) exit 2;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(binDir, "gopass"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GOPASS_FAKE_STORE", storeDir)
+	if initialized {
+		t.Setenv("GOPASS_FAKE_INIT", "1")
+	} else {
+		os.Unsetenv("GOPASS_FAKE_INIT")
+	}
+}
+
+func TestGopassBackendRoundTrip(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell shim not portable to windows")
+	}
+	writeFakeGopass(t, true)
+	store, name, err := Resolve("")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if name != BackendGopass {
+		t.Fatalf("resolved backend = %q, want gopass", name)
+	}
+	if err := store.Set("default", "auth.bearer_token", "tok"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	got, ok, err := store.Get("default", "auth.bearer_token")
+	if err != nil || !ok || got != "tok" {
+		t.Fatalf("Get() = %q, %v, %v", got, ok, err)
+	}
+	keys, err := store.List("default")
+	if err != nil || len(keys) != 1 || keys[0] != "auth.bearer_token" {
+		t.Fatalf("List() = %v, %v", keys, err)
+	}
+	removed, err := store.Unset("default", "auth.bearer_token")
+	if err != nil || !removed {
+		t.Fatalf("Unset() = %v, %v", removed, err)
+	}
+}
+
+func TestGopassPresentButUninitializedFallsBackToFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell shim not portable to windows")
+	}
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	writeFakeGopass(t, false)
+	_, name, err := Resolve("")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if name != BackendFile {
+		t.Fatalf("resolved backend = %q, want file (fallback)", name)
+	}
+}
+`
+	secretsTestPath := filepath.Join(outDir, "internal", "secrets", "secrets_runtime_test.go")
+	if err := os.WriteFile(secretsTestPath, []byte(secretsTestContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", secretsTestPath, err)
+	}
+
 	gocache := filepath.Join(outDir, ".gocache")
+
+	// Generate a go.sum for the generated module (it now depends on
+	// filippo.io/age). tidy is the one step allowed to reach the module proxy:
+	// a fresh module depending on cobra v1.8.0 (a pre-pruning go 1.15 module)
+	// and age must resolve the full graph including transitive *test*
+	// dependencies (e.g. c2sp.org/CCTV/age), which a pruned/empty cache does
+	// not contain. The build and test steps below run fully offline
+	// (GOPROXY=off), which is what proves the generated CLI needs no network.
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = outDir
+	tidy.Env = append(os.Environ(),
+		"GOCACHE="+gocache,
+		"GOSUMDB=off",
+	)
+	if output, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy for generated module failed: %v\n%s", err, string(output))
+	}
 
 	cmd := exec.Command("go", "test", "./internal/...")
 	cmd.Dir = outDir
 	cmd.Env = append(os.Environ(),
 		"GOCACHE="+gocache,
-		"GOMODCACHE="+gomodcache,
 		"GOSUMDB=off",
 		"GOPROXY=off",
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated go test ./internal/... failed: %v\n%s", err, string(output))
+	}
+}
+
+// TestGeneratedSecretRoundTripFileBackendBuild builds the full generated CLI
+// and exercises `config set --secret` / `config get` with the encrypted file
+// backend under a temp HOME, asserting the secret is never written to
+// config.json in plaintext.
+func TestGeneratedSecretRoundTripFileBackendBuild(t *testing.T) {
+	outDir := t.TempDir()
+	openAPI := sampleOpenAPI()
+
+	if _, err := generator.Generate(openAPI, []byte(`{}`), generator.Options{
+		CLIName: "petstore",
+		OutDir:  outDir,
+		NoBuild: true,
+		Force:   true,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	gocache := filepath.Join(outDir, ".gocache")
+	env := append(os.Environ(),
+		"GOCACHE="+gocache,
+		"GOSUMDB=off",
+	)
+
+	// tidy resolves the full module graph (incl. transitive test deps) and so
+	// needs the proxy once; the build below is offline (GOPROXY=off), proving
+	// the generated CLI builds without network.
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = outDir
+	tidy.Env = env
+	if output, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed: %v\n%s", err, string(output))
+	}
+
+	binPath := filepath.Join(outDir, "petstore-bin")
+	build := exec.Command("go", "build", "-o", binPath, ".")
+	build.Dir = outDir
+	build.Env = append(env, "GOPROXY=off")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building generated CLI failed: %v\n%s", err, string(output))
+	}
+
+	home := t.TempDir()
+	runEnv := append(os.Environ(),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, "xdg"),
+		"PETSTORE_SECRETS_BACKEND=file",
+	)
+
+	const secret = "s3cr3t-token-value"
+	set := exec.Command(binPath, "config", "set", "auth.bearer_token", secret, "--secret")
+	set.Env = runEnv
+	if output, err := set.CombinedOutput(); err != nil {
+		t.Fatalf("config set --secret failed: %v\n%s", err, string(output))
+	}
+
+	get := exec.Command(binPath, "config", "get", "auth.bearer_token")
+	get.Env = runEnv
+	getOut, err := get.CombinedOutput()
+	if err != nil {
+		t.Fatalf("config get failed: %v\n%s", err, string(getOut))
+	}
+	if !strings.Contains(string(getOut), secret) {
+		t.Fatalf("config get did not return the secret; output=%s", string(getOut))
+	}
+
+	// The secret must never appear in plaintext on disk, and an encrypted
+	// blob must exist.
+	sawBlob := false
+	err = filepath.Walk(home, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == "secrets.age" {
+			sawBlob = true
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		if strings.Contains(string(data), secret) {
+			t.Fatalf("secret leaked in plaintext at %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking home: %v", err)
+	}
+	if !sawBlob {
+		t.Fatal("expected an encrypted secrets.age blob to be written")
 	}
 }
