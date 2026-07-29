@@ -29,9 +29,10 @@ var configListCmd = &cobra.Command{
 			Secret bool   `json:"secret"`
 		}
 		type resp struct {
-			Path         string  `json:"path"`
-			Active       string  `json:"active_profile"`
-			Entries      []entry `json:"entries"`
+			Path           string  `json:"path"`
+			Active         string  `json:"active_profile"`
+			SecretsBackend string  `json:"secrets_backend"`
+			Entries        []entry `json:"entries"`
 		}
 
 		masked := store.MaskedEntries()
@@ -41,9 +42,10 @@ var configListCmd = &cobra.Command{
 		}
 
 		writeJSON(resp{
-			Path:    store.Path(),
-			Active:  store.ActiveProfileName(),
-			Entries: entries,
+			Path:           store.Path(),
+			Active:         store.ActiveProfileName(),
+			SecretsBackend: store.SecretsBackend,
+			Entries:        entries,
 		})
 		return nil
 	},
@@ -61,7 +63,9 @@ var configSetCmd = &cobra.Command{
 		key := args[0]
 		value := args[1]
 
-		store.Set(key, value, configSetSecret)
+		if err := store.Set(key, value, configSetSecret); err != nil {
+			return err
+		}
 		if err := store.Save(); err != nil {
 			return err
 		}
@@ -90,7 +94,10 @@ var configGetCmd = &cobra.Command{
 			return err
 		}
 		key := args[0]
-		value, ok := store.Get(key)
+		value, ok, err := store.Get(key)
+		if err != nil {
+			return err
+		}
 		if !ok {
 			return fmt.Errorf("property %q is not set in profile %q", key, store.ActiveProfileName())
 		}
@@ -115,7 +122,10 @@ var configUnsetCmd = &cobra.Command{
 			return err
 		}
 		key := args[0]
-		removed := store.Unset(key)
+		removed, err := store.Unset(key)
+		if err != nil {
+			return err
+		}
 		if err := store.Save(); err != nil {
 			return err
 		}
@@ -209,17 +219,51 @@ var configProfilesUseCmd = &cobra.Command{
 	},
 }
 
+var configSecretsMigrateTarget string
+
+var configSecretsCmd = &cobra.Command{
+	Use:    "secrets",
+	Short:  "Manage the secret storage backend",
+	Hidden: true,
+}
+
+var configSecretsMigrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate stored secrets to a different backend",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := cfg.Load()
+		if err != nil {
+			return err
+		}
+		if err := store.MigrateSecrets(configSecretsMigrateTarget); err != nil {
+			return err
+		}
+
+		type resp struct {
+			Active  string `json:"active_profile"`
+			Backend string `json:"secrets_backend"`
+		}
+		writeJSON(resp{Active: store.ActiveProfileName(), Backend: store.SecretsBackend})
+		return nil
+	},
+}
+
 func init() {
-	configSetCmd.Flags().BoolVar(&configSetSecret, "secret", false, "Store the value as a secret and mask it in config list")
+	configSetCmd.Flags().BoolVar(&configSetSecret, "secret", false, "Store the value encrypted at rest (gopass or an age-encrypted file) and mask it in config list; set <CLINAME>_SECRETS_BACKEND=plaintext to opt out")
+	configSecretsMigrateCmd.Flags().StringVar(&configSecretsMigrateTarget, "to", "", "Target secrets backend: gopass, file, or plaintext")
+	_ = configSecretsMigrateCmd.MarkFlagRequired("to")
 
 	configProfilesCmd.AddCommand(configProfilesListCmd)
 	configProfilesCmd.AddCommand(configProfilesCreateCmd)
 	configProfilesCmd.AddCommand(configProfilesUseCmd)
+
+	configSecretsCmd.AddCommand(configSecretsMigrateCmd)
 
 	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configUnsetCmd)
 	configCmd.AddCommand(configProfilesCmd)
+	configCmd.AddCommand(configSecretsCmd)
 	rootCmd.AddCommand(configCmd)
 }

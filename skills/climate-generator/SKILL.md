@@ -81,6 +81,11 @@ Generated CLIs also include config plus spec-aware event commands:
 <cli-name> events emit <event-name> --target-url <url> [--data-json <json>] [--data-file <path>] [--signature-mode none|hmac]
 ```
 
+Secrets from `config set --secret` and `auth login` are encrypted at rest
+(gopass when its store is initialized, otherwise an age-encrypted local file).
+Override with `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`; move existing
+secrets with the hidden `<cli-name> config secrets migrate --to <backend>`.
+
 ### List generated CLIs
 
 ```bash

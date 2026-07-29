@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	cfg "{{.CLIName}}/internal/config"
@@ -57,13 +55,17 @@ var authLoginCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			store.Set("auth.api_keys."+scheme.ConfigKey, value, true)
+			if err := store.Set("auth.api_keys."+scheme.ConfigKey, value, true); err != nil {
+				return err
+			}
 		case "http_bearer", "openIdConnect":
 			token, err := prompt(reader, cmd.ErrOrStderr(), "Access token")
 			if err != nil {
 				return err
 			}
-			store.Set("auth.bearer_token", token, true)
+			if err := store.Set("auth.bearer_token", token, true); err != nil {
+				return err
+			}
 		case "http_basic":
 			username, err := prompt(reader, cmd.ErrOrStderr(), "Username")
 			if err != nil {
@@ -73,8 +75,12 @@ var authLoginCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			store.Set("auth.basic_username", username, false)
-			store.Set("auth.basic_password", password, true)
+			if err := store.Set("auth.basic_username", username, false); err != nil {
+				return err
+			}
+			if err := store.Set("auth.basic_password", password, true); err != nil {
+				return err
+			}
 		case "oauth2":
 			if err := interactiveOAuthLogin(reader, cmd.ErrOrStderr(), store, scheme); err != nil {
 				return err
@@ -121,7 +127,11 @@ var authStatusCmd = &cobra.Command{
 			keys := authKeysForScheme(scheme)
 			configured := false
 			for _, key := range keys {
-				if _, ok := store.Get(key); ok {
+				_, ok, err := store.Get(key)
+				if err != nil {
+					return err
+				}
+				if ok {
 					configured = true
 					break
 				}
@@ -155,14 +165,22 @@ var authLogoutCmd = &cobra.Command{
 				return err
 			}
 			for _, key := range authKeysForScheme(scheme) {
-				if store.Unset(key) {
+				ok, err := store.Unset(key)
+				if err != nil {
+					return err
+				}
+				if ok {
 					removed = append(removed, key)
 				}
 			}
 		} else {
 			for _, scheme := range generatedAuthSchemes {
 				for _, key := range authKeysForScheme(scheme) {
-					if store.Unset(key) {
+					ok, err := store.Unset(key)
+					if err != nil {
+						return err
+					}
+					if ok {
 						removed = append(removed, key)
 					}
 				}
@@ -230,10 +248,13 @@ func interactiveOAuthLogin(reader *bufio.Reader, stderr io.Writer, store *cfg.St
 		if err != nil {
 			return err
 		}
-		store.Set("auth.oauth2_client_id", clientID, false)
-		store.Set("auth.oauth2_client_secret", clientSecret, true)
-		store.Set("auth.oauth2_token", token, true)
-		return nil
+		if err := store.Set("auth.oauth2_client_id", clientID, false); err != nil {
+			return err
+		}
+		if err := store.Set("auth.oauth2_client_secret", clientSecret, true); err != nil {
+			return err
+		}
+		return store.Set("auth.oauth2_token", token, true)
 	case scheme.HasPasswordFlow:
 		username, err := prompt(reader, stderr, "OAuth2 username")
 		if err != nil {
@@ -266,16 +287,23 @@ func interactiveOAuthLogin(reader *bufio.Reader, stderr io.Writer, store *cfg.St
 		if err != nil {
 			return err
 		}
-		store.Set("auth.oauth2_username", username, false)
-		store.Set("auth.oauth2_password", password, true)
+		if err := store.Set("auth.oauth2_username", username, false); err != nil {
+			return err
+		}
+		if err := store.Set("auth.oauth2_password", password, true); err != nil {
+			return err
+		}
 		if strings.TrimSpace(clientID) != "" {
-			store.Set("auth.oauth2_client_id", clientID, false)
+			if err := store.Set("auth.oauth2_client_id", clientID, false); err != nil {
+				return err
+			}
 		}
 		if strings.TrimSpace(clientSecret) != "" {
-			store.Set("auth.oauth2_client_secret", clientSecret, true)
+			if err := store.Set("auth.oauth2_client_secret", clientSecret, true); err != nil {
+				return err
+			}
 		}
-		store.Set("auth.oauth2_token", token, true)
-		return nil
+		return store.Set("auth.oauth2_token", token, true)
 	default:
 		if scheme.AuthorizationURL != "" {
 			_, _ = fmt.Fprintf(stderr, "Open this URL in a browser and complete the flow:\n%s\n", scheme.AuthorizationURL)
@@ -284,8 +312,7 @@ func interactiveOAuthLogin(reader *bufio.Reader, stderr io.Writer, store *cfg.St
 		if err != nil {
 			return err
 		}
-		store.Set("auth.oauth2_token", token, true)
-		return nil
+		return store.Set("auth.oauth2_token", token, true)
 	}
 }
 

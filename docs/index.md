@@ -39,6 +39,7 @@ petstore pet get --pet-id 1
 - Body → `--data-json` / `--data-file`
 - Auth via env vars (API key, bearer, basic, OAuth2)
 - Config + auth + event commands → `<cli> config profiles ...`, `<cli> config set/get`, `<cli> auth ...`, `<cli> events ...`
+- Secrets encrypted at rest → gopass when available, else an age-encrypted local file; override with `<CLINAME>_SECRETS_BACKEND=gopass|file|plaintext`
 
 Example generated-CLI workflow:
 

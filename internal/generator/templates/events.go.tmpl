@@ -130,7 +130,7 @@ var eventsListenCmd = &cobra.Command{
 
 		signingSecret := eventsListenSigningSecret
 		if signingSecret == "" {
-			if value, ok := store.Get("events.signing_secret"); ok {
+			if value, ok, err := store.Get("events.signing_secret"); err == nil && ok {
 				signingSecret = value
 			}
 		}
@@ -250,7 +250,7 @@ var eventsEmitCmd = &cobra.Command{
 
 		signingSecret := eventsEmitSigningSecret
 		if signingSecret == "" {
-			if value, ok := store.Get("events.signing_secret"); ok {
+			if value, ok, err := store.Get("events.signing_secret"); err == nil && ok {
 				signingSecret = value
 			}
 		}

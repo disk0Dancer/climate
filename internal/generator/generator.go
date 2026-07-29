@@ -257,6 +257,19 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 		return err
 	}
 
+	// Write internal/secrets/secrets.go
+	secretsDir := filepath.Join(outDir, "internal", "secrets")
+	if err := os.MkdirAll(secretsDir, 0o755); err != nil {
+		return err
+	}
+	secretsContent, err := internalSecretsGoContent(cliName)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(secretsDir, "secrets.go"), secretsContent); err != nil {
+		return err
+	}
+
 	// Write internal/events/events.go
 	eventsDir := filepath.Join(outDir, "internal", "events")
 	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
@@ -601,13 +614,11 @@ func writeFile(path, content string) error {
 func goModContent(cliName string) string {
 	return fmt.Sprintf(`module %s
 
-go 1.21
-
-require github.com/spf13/cobra v1.8.0
+go 1.24
 
 require (
-	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	filippo.io/age v1.3.1
+	github.com/spf13/cobra v1.8.0
 )
 `, cliName)
 }
@@ -865,7 +876,8 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 		imports.WriteString("\t\"net/http\"\n")
 		imports.WriteString("\t\"net/url\"\n")
 	}
-	if needsNetHTTP || needsStrings {
+	if needsStrings {
+		// strings is only used for server-variable interpolation.
 		imports.WriteString("\t\"strings\"\n")
 	}
 	imports.WriteString("\t\"os\"\n")
@@ -1027,15 +1039,47 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 		tagOps[tag] = ops
 	}
 
+	// Determine which imports the generated file actually uses so we never emit
+	// an unused import (which would fail to compile).
+	hasAnyOp := false
+	hasBody := false
+	hasPathParam := false
+	for _, ops := range tagOps {
+		for _, op := range ops {
+			hasAnyOp = true
+			if op.HasBody {
+				hasBody = true
+			}
+			for _, p := range op.Parameters {
+				if p.In == "path" {
+					hasPathParam = true
+				}
+			}
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("package cmd\n\n")
-	sb.WriteString("import (\n")
-	sb.WriteString("\t\"fmt\"\n")
-	sb.WriteString("\t\"os\"\n")
-	sb.WriteString("\t\"strings\"\n\n")
-	_, _ = fmt.Fprintf(&sb, "\t\"%s/internal/client\"\n", cliName)
-	sb.WriteString("\t\"github.com/spf13/cobra\"\n")
-	sb.WriteString(")\n\n")
+	importLines := []string{}
+	if hasBody {
+		// fmt.Errorf and os.ReadFile are only emitted for request bodies.
+		importLines = append(importLines, "\t\"fmt\"")
+		importLines = append(importLines, "\t\"os\"")
+	}
+	if hasPathParam {
+		// strings.ReplaceAll is only emitted for path parameters.
+		importLines = append(importLines, "\t\"strings\"")
+	}
+	if hasAnyOp {
+		importLines = append(importLines, "")
+		importLines = append(importLines, fmt.Sprintf("\t\"%s/internal/client\"", cliName))
+		importLines = append(importLines, "\t\"github.com/spf13/cobra\"")
+	}
+	if len(importLines) > 0 {
+		sb.WriteString("import (\n")
+		sb.WriteString(strings.Join(importLines, "\n"))
+		sb.WriteString("\n)\n\n")
+	}
 
 	// Declare all flag variables at package level to avoid redeclaration
 	sb.WriteString("var (\n")
@@ -1270,6 +1314,19 @@ func internalConfigGoContent(cliName string) (string, error) {
 		CLIName string
 	}{
 		CLIName: cliName,
+	})
+}
+
+func internalSecretsGoContent(cliName string) (string, error) {
+	cliUpper := strings.ToUpper(strings.ReplaceAll(cliName, "-", "_"))
+	return renderTemplate("internal_secrets.go.tmpl", struct {
+		CLIName       string
+		EnvBackendVar string
+		GopassPrefix  string
+	}{
+		CLIName:       cliName,
+		EnvBackendVar: cliUpper + "_SECRETS_BACKEND",
+		GopassPrefix:  "climate/" + cliName,
 	})
 }
 
