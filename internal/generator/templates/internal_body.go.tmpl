@@ -374,8 +374,10 @@ func validate(doc map[string]interface{}, schema Schema) error {
 func typeMatches(want string, value interface{}) bool {
 	got := jsonTypeOf(value)
 	switch want {
-	case "number", "integer":
+	case "number":
 		return got == "number" || got == "integer"
+	case "integer":
+		return got == "integer"
 	case "":
 		return true
 	default:
