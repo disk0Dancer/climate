@@ -1244,8 +1244,8 @@ func chatOpenAPI() *spec.OpenAPI {
 }
 
 // TestGeneratedBodyCompositionE2E builds a generated CLI and drives a real
-// request through it: a body composed from a configured default, positional
-// key=value arguments, and stdin, asserting both the JSON the server received
+// request through it: a body composed from a configured default and positional
+// key=value arguments, asserting both the JSON the server received
 // and the raw --pick output.
 func TestGeneratedBodyCompositionE2E(t *testing.T) {
 	outDir := t.TempDir()
