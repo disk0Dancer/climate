@@ -269,6 +269,16 @@ func (s *Store) ActiveProfile() *Profile {
 	return s.Profiles[s.Active]
 }
 
+// Properties returns a copy of the active profile's non-secret properties.
+func (s *Store) Properties() map[string]string {
+	cfg := s.ActiveProfile()
+	out := make(map[string]string, len(cfg.Properties))
+	for k, v := range cfg.Properties {
+		out[k] = v
+	}
+	return out
+}
+
 // ProfileNames returns profile names in sorted order.
 func (s *Store) ProfileNames() []string {
 	s.ensureDefaults()

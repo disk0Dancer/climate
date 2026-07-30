@@ -270,6 +270,19 @@ func generateFiles(openAPI *spec.OpenAPI, cliName, outDir, hash, specSource stri
 		return err
 	}
 
+	// Write internal/body/body.go
+	bodyDir := filepath.Join(outDir, "internal", "body")
+	if err := os.MkdirAll(bodyDir, 0o755); err != nil {
+		return err
+	}
+	bodyContent, err := internalBodyGoContent()
+	if err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(bodyDir, "body.go"), bodyContent); err != nil {
+		return err
+	}
+
 	// Write internal/events/events.go
 	eventsDir := filepath.Join(outDir, "internal", "events")
 	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
@@ -624,6 +637,7 @@ go 1.24
 
 require (
 	filippo.io/age v1.3.1
+	github.com/itchyny/gojq v0.12.19
 	github.com/spf13/cobra v1.8.0
 )
 `, cliName)
@@ -867,9 +881,9 @@ func rootGoContent(openAPI *spec.OpenAPI, cliName string, schemes []auth.Scheme)
 	}
 `, varName, envVar, sv.Default, "{"+name+"}"))
 	}
-	if len(serverVarKeys) > 0 {
-		needsStrings = true
-	}
+	// strings is always needed: operationDefaults (always emitted in root.go)
+	// and server-variable interpolation both use it.
+	needsStrings = true
 
 	// Build the import list
 	var imports strings.Builder
@@ -989,6 +1003,7 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 		Summary    string
 		Parameters []spec.Parameter
 		HasBody    bool
+		Op         *spec.Operation
 	}
 
 	tagOps := map[string][]opInfo{}
@@ -1014,6 +1029,7 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 				Summary:    op.Summary,
 				Parameters: op.Parameters,
 				HasBody:    op.RequestBody != nil,
+				Op:         op,
 			}
 			tagOps[tag] = append(tagOps[tag], oi)
 		}
@@ -1067,18 +1083,16 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("package cmd\n\n")
 	importLines := []string{}
-	if hasBody {
-		// fmt.Errorf and os.ReadFile are only emitted for request bodies.
-		importLines = append(importLines, "\t\"fmt\"")
-		importLines = append(importLines, "\t\"os\"")
-	}
 	if hasPathParam {
 		// strings.ReplaceAll is only emitted for path parameters.
 		importLines = append(importLines, "\t\"strings\"")
+		importLines = append(importLines, "")
 	}
 	if hasAnyOp {
-		importLines = append(importLines, "")
 		importLines = append(importLines, fmt.Sprintf("\t\"%s/internal/client\"", cliName))
+		if hasBody {
+			importLines = append(importLines, fmt.Sprintf("\tbodypkg \"%s/internal/body\"", cliName))
+		}
 		importLines = append(importLines, "\t\"github.com/spf13/cobra\"")
 	}
 	if len(importLines) > 0 {
@@ -1122,6 +1136,21 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 	}
 	sb.WriteString(")\n\n")
 
+	// Emit the embedded request-body schema (minimal field/type map) for each
+	// operation that has a body, used for validation and defaults filtering.
+	schemaVarMap := map[string]string{}
+	for _, tag := range tagOrder {
+		for _, op := range tagOps[tag] {
+			if !op.HasBody {
+				continue
+			}
+			opKey := tag + "_" + op.SubCmdName + "_" + op.Method
+			schemaVar := fmt.Sprintf("%s%sBodySchema", camelCase(tag), toPascal(op.SubCmdName))
+			schemaVarMap[opKey] = schemaVar
+			sb.WriteString(fmt.Sprintf("var %s = %s\n\n", schemaVar, bodySchemaLiteral(openAPI, op.Op)))
+		}
+	}
+
 	// Build init function
 	sb.WriteString("func init() {\n")
 
@@ -1143,9 +1172,16 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 				short = fmt.Sprintf("%s %s", op.Method, op.Path)
 			}
 
+			use := op.SubCmdName
+			if op.HasBody {
+				use = op.SubCmdName + " [field=value|field:=json ...]"
+			}
 			sb.WriteString(fmt.Sprintf("\t%s := &cobra.Command{\n", subCmdVar))
-			sb.WriteString(fmt.Sprintf("\t\tUse:   %q,\n", op.SubCmdName))
+			sb.WriteString(fmt.Sprintf("\t\tUse:   %q,\n", use))
 			sb.WriteString(fmt.Sprintf("\t\tShort: %q,\n", short))
+			if op.HasBody {
+				sb.WriteString("\t\tArgs:  cobra.ArbitraryArgs,\n")
+			}
 			sb.WriteString("\t\tRunE: func(cmd *cobra.Command, args []string) error {\n")
 
 			// Build path with replacements
@@ -1174,24 +1210,19 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 				}
 			}
 
-			// Body handling
+			// Body handling: compose from --data-json/--data-file base, configured
+			// defaults, and positional key=value arguments (args win).
 			bodyArg := "nil"
 			if op.HasBody {
-				dataJSONKey := opKey + "__dataJSON"
-				dataFileKey := opKey + "__dataFile"
-				dataJSONVar := varMap[dataJSONKey]
-				dataFileVar := varMap[dataFileKey]
+				dataJSONVar := varMap[opKey+"__dataJSON"]
+				dataFileVar := varMap[opKey+"__dataFile"]
+				schemaVar := schemaVarMap[opKey]
 				bodyArg = "bodyData"
-				sb.WriteString("\t\t\tvar bodyData []byte\n")
-				sb.WriteString(fmt.Sprintf("\t\t\tif %s != \"\" {\n", dataJSONVar))
-				sb.WriteString(fmt.Sprintf("\t\t\t\tbodyData = []byte(%s)\n", dataJSONVar))
-				sb.WriteString(fmt.Sprintf("\t\t\t} else if %s != \"\" {\n", dataFileVar))
-				sb.WriteString("\t\t\t\tvar readErr error\n")
-				sb.WriteString(fmt.Sprintf("\t\t\t\tbodyData, readErr = os.ReadFile(%s)\n", dataFileVar))
-				sb.WriteString("\t\t\t\tif readErr != nil {\n")
-				sb.WriteString("\t\t\t\t\treturn fmt.Errorf(\"reading data file: %w\", readErr)\n")
-				sb.WriteString("\t\t\t\t}\n")
-				sb.WriteString("\t\t\t}\n")
+				sb.WriteString(fmt.Sprintf("\t\t\tbase, err := requestBodyBytes(%s, %s)\n", dataJSONVar, dataFileVar))
+				sb.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn err\n\t\t\t}\n")
+				sb.WriteString(fmt.Sprintf("\t\t\tbodyData, err := bodypkg.Compose(base, operationDefaults(%q, %q), args, cmd.InOrStdin(), %s, cmd.ErrOrStderr())\n",
+					op.Tag, op.SubCmdName, schemaVar))
+				sb.WriteString("\t\t\tif err != nil {\n\t\t\t\treturn err\n\t\t\t}\n")
 			}
 
 			// Build per-request headers from header parameters
@@ -1231,7 +1262,11 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 			sb.WriteString("\t\t\tif resp.StatusCode >= 400 {\n")
 			sb.WriteString("\t\t\t\texitWithError(resp.StatusCode, \"HTTPError\", resp.Body, resp.Raw)\n")
 			sb.WriteString("\t\t\t}\n")
-			sb.WriteString("\t\t\twriteOutput(resp.Raw)\n")
+			sb.WriteString("\t\t\tjqExpr, _ := cmd.Flags().GetString(\"jq\")\n")
+			sb.WriteString("\t\t\tpickExpr, _ := cmd.Flags().GetString(\"pick\")\n")
+			sb.WriteString("\t\t\tif err := emitResponse(resp.Raw, jqExpr, pickExpr); err != nil {\n")
+			sb.WriteString("\t\t\t\treturn err\n")
+			sb.WriteString("\t\t\t}\n")
 			sb.WriteString("\t\t\treturn nil\n")
 			sb.WriteString("\t\t},\n")
 			sb.WriteString("\t}\n")
@@ -1246,11 +1281,14 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 			if op.HasBody {
 				dataJSONKey := opKey + "__dataJSON"
 				dataFileKey := opKey + "__dataFile"
-				sb.WriteString(fmt.Sprintf("\t%s.Flags().StringVar(&%s, \"data-json\", \"\", \"JSON body data\")\n",
+				sb.WriteString(fmt.Sprintf("\t%s.Flags().StringVar(&%s, \"data-json\", \"\", \"Base JSON body (fallback; key=value args override it)\")\n",
 					subCmdVar, varMap[dataJSONKey]))
-				sb.WriteString(fmt.Sprintf("\t%s.Flags().StringVar(&%s, \"data-file\", \"\", \"Path to JSON file\")\n",
+				sb.WriteString(fmt.Sprintf("\t%s.Flags().StringVar(&%s, \"data-file\", \"\", \"Path to a base JSON body file\")\n",
 					subCmdVar, varMap[dataFileKey]))
 			}
+			// Response shaping flags are available on every operation command.
+			sb.WriteString(fmt.Sprintf("\t%s.Flags().String(\"jq\", \"\", \"Filter the response with a jq expression\")\n", subCmdVar))
+			sb.WriteString(fmt.Sprintf("\t%s.Flags().String(\"pick\", \"\", \"Pick a response field path, e.g. choices[0].message.content\")\n", subCmdVar))
 
 			sb.WriteString(fmt.Sprintf("\t%s.AddCommand(%s)\n\n", tagCmdVar, subCmdVar))
 		}
@@ -1259,6 +1297,92 @@ func commandsGoContent(openAPI *spec.OpenAPI, cliName string) (string, error) {
 	sb.WriteString("}\n")
 
 	return sb.String(), nil
+}
+
+// bodySchemaLiteral renders a bodypkg.Schema literal describing the top-level
+// fields of an operation's request body, used by generated code for validation
+// and defaults filtering. An unknown/free-form body yields an empty schema
+// (validation skipped).
+func bodySchemaLiteral(openAPI *spec.OpenAPI, op *spec.Operation) string {
+	known, fields := operationBodyFields(openAPI, op)
+	if !known {
+		return "bodypkg.Schema{}"
+	}
+	var sb strings.Builder
+	sb.WriteString("bodypkg.Schema{\n\tKnown: true,\n\tFields: map[string]string{\n")
+	for _, f := range fields {
+		sb.WriteString(fmt.Sprintf("\t\t%q: %q,\n", f[0], f[1]))
+	}
+	sb.WriteString("\t},\n}")
+	return sb.String()
+}
+
+// operationBodyFields resolves an operation's JSON request-body schema to a
+// sorted list of top-level [name, jsonType] pairs. It returns known=false when
+// there is no usable object schema (validation is then skipped).
+func operationBodyFields(openAPI *spec.OpenAPI, op *spec.Operation) (bool, [][2]string) {
+	if op == nil || op.RequestBody == nil {
+		return false, nil
+	}
+	media, ok := op.RequestBody.Content["application/json"]
+	if !ok {
+		names := make([]string, 0, len(op.RequestBody.Content))
+		for name := range op.RequestBody.Content {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		if len(names) == 0 {
+			return false, nil
+		}
+		media = op.RequestBody.Content[names[0]]
+	}
+	schema := resolveSchemaRef(openAPI, media.Schema)
+	if schema == nil || len(schema.Properties) == 0 {
+		return false, nil
+	}
+	names := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	fields := make([][2]string, 0, len(names))
+	for _, name := range names {
+		fields = append(fields, [2]string{name, jsonSchemaType(resolveSchemaRef(openAPI, schema.Properties[name]))})
+	}
+	return true, fields
+}
+
+// resolveSchemaRef follows $ref chains to a concrete schema, guarding against
+// cycles.
+func resolveSchemaRef(openAPI *spec.OpenAPI, s *spec.Schema) *spec.Schema {
+	seen := map[string]bool{}
+	for s != nil && s.Ref != "" {
+		name := strings.TrimPrefix(s.Ref, "#/components/schemas/")
+		if seen[name] {
+			return nil
+		}
+		seen[name] = true
+		s = openAPI.Components.Schemas[name]
+	}
+	return s
+}
+
+// jsonSchemaType returns the JSON type for a schema, inferring object/array
+// when the type keyword is absent.
+func jsonSchemaType(s *spec.Schema) string {
+	if s == nil {
+		return ""
+	}
+	if s.Type != "" {
+		return s.Type
+	}
+	if len(s.Properties) > 0 {
+		return "object"
+	}
+	if s.Items != nil {
+		return "array"
+	}
+	return ""
 }
 
 // eventsGoContent generates the cobra commands for event handling.
@@ -1321,6 +1445,10 @@ func internalConfigGoContent(cliName string) (string, error) {
 	}{
 		CLIName: cliName,
 	})
+}
+
+func internalBodyGoContent() (string, error) {
+	return renderTemplate("internal_body.go.tmpl", nil)
 }
 
 func internalSecretsGoContent(cliName string) (string, error) {

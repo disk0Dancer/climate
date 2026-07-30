@@ -149,6 +149,7 @@ func GenerateCLIPrompt(entry manifest.CLIEntry, openAPI *spec.OpenAPI, mode Mode
 	// ── Output & errors ───────────────────────────────────────────────────────
 	b.WriteString("\n## Output format\n\n")
 	b.WriteString("On success (HTTP 2xx) the command exits 0 and prints the API response body as JSON.\n\n")
+	b.WriteString("Reduce output with `--pick <path>` (e.g. `--pick choices[0].message.content`) or `--jq <expr>`; a picked string prints raw without JSON quotes, which is the cheapest form to parse.\n\n")
 	b.WriteString("On error the command exits non-zero and prints to stderr:\n\n")
 	b.WriteString("```json\n")
 	b.WriteString("{\n")
@@ -185,6 +186,7 @@ func writeFullSection(b *strings.Builder, bin string, openAPI *spec.OpenAPI) {
 		summary string
 		params  []spec.Parameter
 		hasBody bool
+		op      *spec.Operation
 	}
 
 	tagOps := map[string][]opEntry{}
@@ -209,6 +211,7 @@ func writeFullSection(b *strings.Builder, bin string, openAPI *spec.OpenAPI) {
 				summary: op.Summary,
 				params:  op.Parameters,
 				hasBody: op.RequestBody != nil,
+				op:      op,
 			})
 		}
 	}
@@ -247,10 +250,20 @@ func writeFullSection(b *strings.Builder, bin string, openAPI *spec.OpenAPI) {
 				}
 				paramDescs = append(paramDescs, fmt.Sprintf("  - `%s`%s — %s", flag, req, desc))
 			}
+			var fields [][2]string
 			if op.hasBody {
-				cmdParts = append(cmdParts, "[--data-json '<json>']", "[--data-file <path>]")
-				paramDescs = append(paramDescs, "  - `--data-json` — inline JSON request body")
-				paramDescs = append(paramDescs, "  - `--data-file` — path to a JSON file with the request body")
+				fields = bodyFields(openAPI, op.op)
+				// Lead with the compact key=value form for a concrete example.
+				for i, f := range fields {
+					if i >= 3 {
+						break
+					}
+					if f[1] == "string" || f[1] == "" {
+						cmdParts = append(cmdParts, f[0]+"=<"+f[0]+">")
+					} else {
+						cmdParts = append(cmdParts, f[0]+":=<"+f[1]+">")
+					}
+				}
 			}
 			cmdParts = append(cmdParts, "--output=json")
 
@@ -267,6 +280,29 @@ func writeFullSection(b *strings.Builder, bin string, openAPI *spec.OpenAPI) {
 					b.WriteString(d + "\n")
 				}
 			}
+
+			if op.hasBody {
+				b.WriteString("\nRequest body fields (compose with `field=value` for strings, `field:=json` for numbers/bools/arrays/objects; `field=@file` or `field=@-` reads a string from a file or stdin):\n")
+				if len(fields) > 0 {
+					for _, f := range fields {
+						b.WriteString(fmt.Sprintf("  - `%s` (%s)\n", f[0], f[1]))
+					}
+				} else {
+					b.WriteString("  - (free-form JSON object)\n")
+				}
+				exField := "<field>"
+				if len(fields) > 0 {
+					exField = fields[0][0]
+				}
+				b.WriteString("\nDefaults (set once, then omit from calls):\n")
+				b.WriteString(fmt.Sprintf("  - `%s config set defaults.%s.%s <value>` (applies to every %s operation)\n", bin, op.tag, exField, op.tag))
+				b.WriteString(fmt.Sprintf("  - `%s config set defaults.%s.%s.%s <value>` (applies to this operation only)\n", bin, op.tag, op.subCmd, exField))
+				b.WriteString("  - `--data-json '<json>'` / `--data-file <path>` — low-level JSON body (fallback; `field=value` args override it)\n")
+			}
+
+			b.WriteString("\nResponse shaping (any operation):\n")
+			b.WriteString("  - `--pick <path>` — extract one field, e.g. `--pick choices[0].message.content` (string results print raw)\n")
+			b.WriteString("  - `--jq <expr>` — filter the response with a jq expression\n")
 			b.WriteString("\n")
 		}
 	}
@@ -304,6 +340,69 @@ func writeCompactSection(b *strings.Builder, bin string, openAPI *spec.OpenAPI) 
 		b.WriteString("```\n" + bin + " " + tag + " <subcommand> [flags] --output=json\n```\n\n")
 		b.WriteString("Run `" + bin + " " + tag + " --help` to see all subcommands.\n\n")
 	}
+}
+
+// bodyFields resolves the top-level request-body fields of an operation to a
+// sorted list of [name, jsonType] pairs, following $ref chains.
+func bodyFields(openAPI *spec.OpenAPI, op *spec.Operation) [][2]string {
+	if op == nil || op.RequestBody == nil {
+		return nil
+	}
+	media, ok := op.RequestBody.Content["application/json"]
+	if !ok {
+		names := make([]string, 0, len(op.RequestBody.Content))
+		for n := range op.RequestBody.Content {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		if len(names) == 0 {
+			return nil
+		}
+		media = op.RequestBody.Content[names[0]]
+	}
+	schema := resolveSchema(openAPI, media.Schema)
+	if schema == nil || len(schema.Properties) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(schema.Properties))
+	for n := range schema.Properties {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([][2]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, [2]string{n, schemaType(resolveSchema(openAPI, schema.Properties[n]))})
+	}
+	return out
+}
+
+func resolveSchema(openAPI *spec.OpenAPI, s *spec.Schema) *spec.Schema {
+	seen := map[string]bool{}
+	for s != nil && s.Ref != "" {
+		name := strings.TrimPrefix(s.Ref, "#/components/schemas/")
+		if seen[name] {
+			return nil
+		}
+		seen[name] = true
+		s = openAPI.Components.Schemas[name]
+	}
+	return s
+}
+
+func schemaType(s *spec.Schema) string {
+	if s == nil {
+		return ""
+	}
+	if s.Type != "" {
+		return s.Type
+	}
+	if len(s.Properties) > 0 {
+		return "object"
+	}
+	if s.Items != nil {
+		return "array"
+	}
+	return ""
 }
 
 func operationSubCmd(op *spec.Operation, method, path string) string {

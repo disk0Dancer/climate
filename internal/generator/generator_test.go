@@ -1,12 +1,17 @@
 package generator_test
 
 import (
+	"encoding/json"
 	"go/parser"
 	"go/token"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/disk0Dancer/climate/internal/generator"
@@ -178,6 +183,7 @@ func TestGenerateCreatesFiles(t *testing.T) {
 		"internal/client/client.go",
 		"internal/config/config.go",
 		"internal/secrets/secrets.go",
+		"internal/body/body.go",
 		"internal/events/events.go",
 		"climate_meta.json",
 	}
@@ -527,6 +533,7 @@ func TestGeneratedGoFilesParse(t *testing.T) {
 		filepath.Join(outDir, "internal", "client", "client.go"),
 		filepath.Join(outDir, "internal", "config", "config.go"),
 		filepath.Join(outDir, "internal", "secrets", "secrets.go"),
+		filepath.Join(outDir, "internal", "body", "body.go"),
 		filepath.Join(outDir, "internal", "events", "events.go"),
 	}
 
@@ -887,6 +894,194 @@ func TestGopassPresentButUninitializedFallsBackToFile(t *testing.T) {
 		t.Fatalf("WriteFile(%s) error = %v", secretsTestPath, err)
 	}
 
+	bodyTestContent := `package body
+
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func mustCompose(t *testing.T, base string, defaults map[string]string, args []string, stdin string, schema Schema) map[string]interface{} {
+	t.Helper()
+	var b []byte
+	if base != "" {
+		b = []byte(base)
+	}
+	out, err := Compose(b, defaults, args, strings.NewReader(stdin), schema, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Compose error: %v", err)
+	}
+	m := map[string]interface{}{}
+	if len(out) > 0 {
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+	}
+	return m
+}
+
+func TestParseForms(t *testing.T) {
+	doc, err := Parse([]string{"model=gpt", "temp:=0.2", "stream:=true", "a.b=x", "items[0].name=n"}, nil)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if doc["model"] != "gpt" {
+		t.Fatalf("model=%v", doc["model"])
+	}
+	if doc["temp"] != 0.2 {
+		t.Fatalf("temp=%v", doc["temp"])
+	}
+	if doc["stream"] != true {
+		t.Fatalf("stream=%v", doc["stream"])
+	}
+	a, _ := doc["a"].(map[string]interface{})
+	if a == nil || a["b"] != "x" {
+		t.Fatalf("a.b=%v", doc["a"])
+	}
+	items, _ := doc["items"].([]interface{})
+	if len(items) != 1 {
+		t.Fatalf("items=%v", doc["items"])
+	}
+	obj, _ := items[0].(map[string]interface{})
+	if obj["name"] != "n" {
+		t.Fatalf("items[0].name=%v", items[0])
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	if _, err := Parse([]string{"noequals"}, nil); err == nil {
+		t.Fatal("expected error for missing =")
+	}
+	if _, err := Parse([]string{"x:=not json"}, nil); err == nil {
+		t.Fatal("expected error for bad raw JSON")
+	}
+}
+
+func TestParseStdin(t *testing.T) {
+	doc, err := Parse([]string{"content=@-"}, strings.NewReader("hello\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if doc["content"] != "hello" {
+		t.Fatalf("content=%v", doc["content"])
+	}
+}
+
+func TestArgsLaterWins(t *testing.T) {
+	doc, _ := Parse([]string{"a=1", "a=2"}, nil)
+	if doc["a"] != "2" {
+		t.Fatalf("a=%v", doc["a"])
+	}
+}
+
+func TestComposePrecedenceArgsWin(t *testing.T) {
+	schema := Schema{Known: true, Fields: map[string]string{"model": "string", "temperature": "number"}}
+	m := mustCompose(t, "{\"temperature\":0.1}", map[string]string{"model": "default-model"}, []string{"model=arg-model"}, "", schema)
+	if m["model"] != "arg-model" {
+		t.Fatalf("model=%v (args should win)", m["model"])
+	}
+	if m["temperature"] != 0.1 {
+		t.Fatalf("temperature=%v", m["temperature"])
+	}
+}
+
+func TestComposeDefaultSurvives(t *testing.T) {
+	schema := Schema{Known: true, Fields: map[string]string{"model": "string", "temperature": "number"}}
+	m := mustCompose(t, "", map[string]string{"model": "default-model"}, []string{"temperature:=0.5"}, "", schema)
+	if m["model"] != "default-model" {
+		t.Fatalf("model=%v", m["model"])
+	}
+	if m["temperature"] != 0.5 {
+		t.Fatalf("temperature=%v", m["temperature"])
+	}
+}
+
+func TestValidationUnknownField(t *testing.T) {
+	schema := Schema{Known: true, Fields: map[string]string{"model": "string"}}
+	_, err := Compose(nil, nil, []string{"bogus=1"}, nil, schema, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(err.Error(), "model") {
+		t.Fatalf("error should list valid fields: %v", err)
+	}
+}
+
+func TestValidationTypeMismatch(t *testing.T) {
+	schema := Schema{Known: true, Fields: map[string]string{"temperature": "number"}}
+	_, err := Compose(nil, nil, []string{"temperature=hot"}, nil, schema, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "expects number") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestDefaultsFilteredWithWarning(t *testing.T) {
+	schema := Schema{Known: true, Fields: map[string]string{"model": "string"}}
+	warn := &bytes.Buffer{}
+	out, err := Compose(nil, map[string]string{"model": "m", "bogus": "x"}, nil, nil, schema, warn)
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	m := map[string]interface{}{}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["model"] != "m" {
+		t.Fatalf("model=%v", m["model"])
+	}
+	if _, ok := m["bogus"]; ok {
+		t.Fatal("bogus default should be filtered")
+	}
+	if !strings.Contains(warn.String(), "bogus") {
+		t.Fatalf("expected warning about bogus, got %q", warn.String())
+	}
+}
+
+func TestUnknownSchemaSkipsValidation(t *testing.T) {
+	m := mustCompose(t, "", nil, []string{"anything=1", "nested.k=v"}, "", Schema{})
+	if m["anything"] != "1" {
+		t.Fatalf("anything=%v", m["anything"])
+	}
+}
+
+func TestPickToJQ(t *testing.T) {
+	got, err := PickToJQ("choices[0].message.content")
+	if err != nil {
+		t.Fatalf("PickToJQ: %v", err)
+	}
+	if got != ".choices[0].message.content" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestApplyJQ(t *testing.T) {
+	input := map[string]interface{}{"choices": []interface{}{map[string]interface{}{"message": map[string]interface{}{"content": "hi"}}}}
+	results, err := ApplyJQ(".choices[0].message.content", input)
+	if err != nil {
+		t.Fatalf("ApplyJQ: %v", err)
+	}
+	if len(results) != 1 || results[0] != "hi" {
+		t.Fatalf("results=%v", results)
+	}
+}
+
+func TestComposeNoInputReturnsNil(t *testing.T) {
+	out, err := Compose(nil, nil, nil, nil, Schema{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	if out != nil {
+		t.Fatalf("expected nil body, got %s", out)
+	}
+}
+`
+	bodyTestPath := filepath.Join(outDir, "internal", "body", "body_runtime_test.go")
+	if err := os.WriteFile(bodyTestPath, []byte(bodyTestContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", bodyTestPath, err)
+	}
+
 	gocache := filepath.Join(outDir, ".gocache")
 
 	// Generate a go.sum for the generated module (it now depends on
@@ -1011,5 +1206,157 @@ func TestGeneratedSecretRoundTripFileBackendBuild(t *testing.T) {
 	}
 	if !sawBlob {
 		t.Fatal("expected an encrypted secrets.age blob to be written")
+	}
+}
+
+// chatOpenAPI is a minimal spec with a POST operation whose request body has a
+// typed object schema, used to exercise ergonomic body composition end to end.
+func chatOpenAPI() *spec.OpenAPI {
+	return &spec.OpenAPI{
+		OpenAPI: "3.0.0",
+		Info:    spec.Info{Title: "Chat API", Version: "1.0.0"},
+		Servers: []spec.Server{{URL: "https://api.example.com/v1"}},
+		Paths: map[string]spec.PathItem{
+			"/chat/completions": {
+				Post: &spec.Operation{
+					OperationID: "chat_createChatCompletion",
+					Summary:     "Create a chat completion",
+					Tags:        []string{"chat"},
+					RequestBody: &spec.RequestBody{
+						Required: true,
+						Content: map[string]spec.MediaType{
+							"application/json": {
+								Schema: &spec.Schema{
+									Type: "object",
+									Properties: map[string]*spec.Schema{
+										"model":       {Type: "string"},
+										"temperature": {Type: "number"},
+										"messages":    {Type: "array", Items: &spec.Schema{Type: "object"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestGeneratedBodyCompositionE2E builds a generated CLI and drives a real
+// request through it: a body composed from a configured default and positional
+// key=value arguments, asserting both the JSON the server received
+// and the raw --pick output.
+func TestGeneratedBodyCompositionE2E(t *testing.T) {
+	outDir := t.TempDir()
+	if _, err := generator.Generate(chatOpenAPI(), []byte(`{}`), generator.Options{
+		CLIName: "chatcli",
+		OutDir:  outDir,
+		NoBuild: true,
+		Force:   true,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	gocache := filepath.Join(outDir, ".gocache")
+	env := append(os.Environ(),
+		"GOCACHE="+gocache,
+		"GOSUMDB=off",
+	)
+
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = outDir
+	tidy.Env = env
+	if output, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed: %v\n%s", err, string(output))
+	}
+
+	binPath := filepath.Join(outDir, "chatcli-bin")
+	build := exec.Command("go", "build", "-o", binPath, ".")
+	build.Dir = outDir
+	build.Env = append(env, "GOPROXY=off")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building generated CLI failed: %v\n%s", err, string(output))
+	}
+
+	var mu sync.Mutex
+	var recorded []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		recorded = body
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"hi there"}}]}`))
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	runEnv := append(os.Environ(),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, "xdg"),
+		"CHATCLI_SECRETS_BACKEND=plaintext",
+	)
+
+	// Configure a per-tag default so it can be omitted from the call.
+	setDefault := exec.Command(binPath, "config", "set", "defaults.chat.model", "gpt-5-nano")
+	setDefault.Env = runEnv
+	if output, err := setDefault.CombinedOutput(); err != nil {
+		t.Fatalf("config set default failed: %v\n%s", err, string(output))
+	}
+
+	// Compose: model from the default, temperature/messages from args, and the
+	// system prompt piped via stdin; shape the response with --pick.
+	run := exec.Command(binPath, "chat", "create-chat-completion",
+		"temperature:=0.2",
+		`messages:=[{"role":"user","content":"hi"}]`,
+		"--base-url", srv.URL,
+		"--pick", "choices[0].message.content",
+	)
+	run.Env = runEnv
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("composition run failed: %v\n%s", err, string(out))
+	}
+	if got := strings.TrimSpace(string(out)); got != "hi there" {
+		t.Fatalf("--pick output = %q, want %q", got, "hi there")
+	}
+
+	mu.Lock()
+	received := recorded
+	mu.Unlock()
+	var body map[string]interface{}
+	if err := json.Unmarshal(received, &body); err != nil {
+		t.Fatalf("server received invalid JSON %q: %v", string(received), err)
+	}
+	if body["model"] != "gpt-5-nano" {
+		t.Fatalf("model = %v, want gpt-5-nano (from default)", body["model"])
+	}
+	if body["temperature"] != 0.2 {
+		t.Fatalf("temperature = %v, want 0.2", body["temperature"])
+	}
+	msgs, ok := body["messages"].([]interface{})
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages = %v", body["messages"])
+	}
+
+	// A positional arg overrides the configured default.
+	runOverride := exec.Command(binPath, "chat", "create-chat-completion",
+		"model=override-model",
+		"--base-url", srv.URL,
+	)
+	runOverride.Env = runEnv
+	if output, err := runOverride.CombinedOutput(); err != nil {
+		t.Fatalf("override run failed: %v\n%s", err, string(output))
+	}
+	mu.Lock()
+	received = recorded
+	mu.Unlock()
+	var overrideBody map[string]interface{}
+	if err := json.Unmarshal(received, &overrideBody); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if overrideBody["model"] != "override-model" {
+		t.Fatalf("model = %v, want override-model (arg should win over default)", overrideBody["model"])
 	}
 }

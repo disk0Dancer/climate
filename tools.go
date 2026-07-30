@@ -10,4 +10,7 @@
 // climate binary.
 package tools
 
-import _ "filippo.io/age"
+import (
+	_ "filippo.io/age"
+	_ "github.com/itchyny/gojq"
+)

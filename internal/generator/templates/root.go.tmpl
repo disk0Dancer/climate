@@ -2,6 +2,7 @@ package cmd
 
 import (
 {{.Imports}}
+	bodypkg "{{.CLIName}}/internal/body"
 	cfg "{{.CLIName}}/internal/config"
 )
 
@@ -106,5 +107,84 @@ func exitWithError(statusCode int, code, message string, raw interface{}) {
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(obj)
 	os.Exit(1)
+}
+
+// requestBodyBytes returns the base request body from --data-json or --data-file.
+func requestBodyBytes(dataJSON, dataFile string) ([]byte, error) {
+	if dataJSON != "" {
+		return []byte(dataJSON), nil
+	}
+	if dataFile != "" {
+		data, err := os.ReadFile(dataFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading data file: %w", err)
+		}
+		return data, nil
+	}
+	return nil, nil
+}
+
+// operationDefaults returns configured body-field defaults for an operation,
+// merging tag-level (defaults.<tag>.<field>) values under operation-level
+// (defaults.<tag>.<operation>.<field>) values.
+func operationDefaults(tag, op string) map[string]string {
+	store, err := cfg.Load()
+	if err != nil {
+		return nil
+	}
+	tagPrefix := "defaults." + tag + "."
+	opPrefix := op + "."
+	tagLevel := map[string]string{}
+	opLevel := map[string]string{}
+	for key, value := range store.Properties() {
+		if !strings.HasPrefix(key, tagPrefix) {
+			continue
+		}
+		rest := key[len(tagPrefix):]
+		if strings.HasPrefix(rest, opPrefix) {
+			opLevel[rest[len(opPrefix):]] = value
+		} else if !strings.Contains(rest, ".") {
+			tagLevel[rest] = value
+		}
+	}
+	for field, value := range opLevel {
+		tagLevel[field] = value
+	}
+	if len(tagLevel) == 0 {
+		return nil
+	}
+	return tagLevel
+}
+
+// emitResponse prints the response, optionally filtered by --jq or its --pick
+// path sugar. Filtered string results print raw (no JSON quotes).
+func emitResponse(raw interface{}, jqExpr, pickExpr string) error {
+	if jqExpr == "" && pickExpr != "" {
+		compiled, err := bodypkg.PickToJQ(pickExpr)
+		if err != nil {
+			return err
+		}
+		jqExpr = compiled
+	}
+	if jqExpr == "" {
+		writeOutput(raw)
+		return nil
+	}
+	results, err := bodypkg.ApplyJQ(jqExpr, raw)
+	if err != nil {
+		return err
+	}
+	for _, r := range results {
+		printFiltered(r)
+	}
+	return nil
+}
+
+func printFiltered(v interface{}) {
+	if s, ok := v.(string); ok {
+		fmt.Fprintln(os.Stdout, s)
+		return
+	}
+	writeOutput(v)
 }
 {{.OAuth2Helper}}

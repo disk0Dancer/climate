@@ -1,0 +1,476 @@
+// Package body composes JSON request bodies from httpie-style command-line
+// arguments and shapes responses. It is the shared engine future ergonomic
+// features (REPL, aliases, TUI) reuse, so it is kept free of cobra/config
+// dependencies and heavily unit-tested.
+package body
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/itchyny/gojq"
+)
+
+// Schema is the minimal per-operation request-body description embedded into a
+// generated CLI: the top-level field names and their JSON types. Known is false
+// when the operation has no usable object schema, in which case validation and
+// defaults filtering are skipped (any field is accepted).
+type Schema struct {
+	Known  bool
+	Fields map[string]string // field name -> json type (string/number/integer/boolean/array/object)
+}
+
+// segment is one component of a field path: an object key or an array index.
+type segment struct {
+	key     string
+	index   int
+	isIndex bool
+}
+
+// Compose builds the request body from an optional base document
+// (--data-json/--data-file), configured defaults, and positional key=value
+// arguments. Precedence low-to-high: defaults, base, args (args always win).
+// When schema.Known, the composed top-level fields are validated and unknown
+// default fields are dropped with a warning to warn.
+func Compose(base []byte, defaults map[string]string, args []string, stdin io.Reader, schema Schema, warn io.Writer) ([]byte, error) {
+	hasInput := len(base) > 0 || len(defaults) > 0 || len(args) > 0
+	if !hasInput {
+		return nil, nil
+	}
+
+	baseDoc, baseIsObject, err := decodeBase(base)
+	if err != nil {
+		return nil, err
+	}
+	if !baseIsObject {
+		// A non-object base (array/scalar) cannot be merged with fields.
+		if len(defaults) > 0 || len(args) > 0 {
+			return nil, fmt.Errorf("cannot merge key=value arguments into a non-object --data-json/--data-file body")
+		}
+		return base, nil
+	}
+
+	defaultsDoc, err := buildDefaults(defaults, schema, warn)
+	if err != nil {
+		return nil, err
+	}
+	argsDoc, err := Parse(args, stdin)
+	if err != nil {
+		return nil, err
+	}
+
+	doc := map[string]interface{}{}
+	doc = deepMerge(doc, defaultsDoc)
+	doc = deepMerge(doc, baseDoc)
+	doc = deepMerge(doc, argsDoc)
+
+	if err := validate(doc, schema); err != nil {
+		return nil, err
+	}
+
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("encoding request body: %w", err)
+	}
+	return out, nil
+}
+
+func decodeBase(base []byte) (map[string]interface{}, bool, error) {
+	if len(strings.TrimSpace(string(base))) == 0 {
+		return map[string]interface{}{}, true, nil
+	}
+	var v interface{}
+	if err := json.Unmarshal(base, &v); err != nil {
+		return nil, false, fmt.Errorf("parsing --data-json/--data-file body: %w", err)
+	}
+	if m, ok := v.(map[string]interface{}); ok {
+		return m, true, nil
+	}
+	return nil, false, nil
+}
+
+// Parse turns positional key=value / key:=json arguments into a document.
+func Parse(args []string, stdin io.Reader) (map[string]interface{}, error) {
+	doc := map[string]interface{}{}
+	var stdinData *string // cached stdin contents (read at most once)
+
+	readStdin := func() (string, error) {
+		if stdinData != nil {
+			return *stdinData, nil
+		}
+		if stdin == nil {
+			s := ""
+			stdinData = &s
+			return s, nil
+		}
+		raw, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading stdin: %w", err)
+		}
+		s := string(raw)
+		stdinData = &s
+		return s, nil
+	}
+
+	for _, arg := range args {
+		eq := strings.IndexByte(arg, '=')
+		if eq < 1 {
+			return nil, fmt.Errorf("invalid argument %q: expected key=value, key:=json, key=@file, or key=@-", arg)
+		}
+		raw := false
+		keyEnd := eq
+		if eq >= 1 && arg[eq-1] == ':' {
+			raw = true
+			keyEnd = eq - 1
+		}
+		key := arg[:keyEnd]
+		val := arg[eq+1:]
+		if key == "" {
+			return nil, fmt.Errorf("invalid argument %q: empty field name", arg)
+		}
+		segs, err := parsePath(key)
+		if err != nil {
+			return nil, err
+		}
+
+		var value interface{}
+		if raw {
+			if err := json.Unmarshal([]byte(val), &value); err != nil {
+				return nil, fmt.Errorf("invalid raw JSON for %q: %w", key, err)
+			}
+		} else {
+			switch {
+			case val == "@-":
+				s, err := readStdin()
+				if err != nil {
+					return nil, err
+				}
+				value = strings.TrimRight(s, "\r\n")
+			case strings.HasPrefix(val, "@"):
+				data, err := readFileValue(val[1:])
+				if err != nil {
+					return nil, err
+				}
+				value = data
+			default:
+				value = val
+			}
+		}
+
+		doc, err = setPath(doc, segs, value)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return doc, nil
+}
+
+func readFileValue(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading value file %q: %w", path, err)
+	}
+	return string(data), nil
+}
+
+// parsePath splits a field path such as "a.b", "items[0].name", or "a[0][1]"
+// into ordered segments.
+func parsePath(path string) ([]segment, error) {
+	var segs []segment
+	i := 0
+	n := len(path)
+	expectKey := true
+	for i < n {
+		switch path[i] {
+		case '.':
+			i++
+			expectKey = true
+		case '[':
+			end := strings.IndexByte(path[i:], ']')
+			if end < 0 {
+				return nil, fmt.Errorf("invalid path %q: missing ']'", path)
+			}
+			idxStr := path[i+1 : i+end]
+			idx, err := strconv.Atoi(idxStr)
+			if err != nil || idx < 0 {
+				return nil, fmt.Errorf("invalid array index %q in path %q", idxStr, path)
+			}
+			segs = append(segs, segment{index: idx, isIndex: true})
+			i += end + 1
+			expectKey = false
+		default:
+			start := i
+			for i < n && path[i] != '.' && path[i] != '[' {
+				i++
+			}
+			name := path[start:i]
+			if name == "" {
+				return nil, fmt.Errorf("invalid path %q: empty key segment", path)
+			}
+			segs = append(segs, segment{key: name})
+			expectKey = false
+		}
+	}
+	if len(segs) == 0 {
+		return nil, fmt.Errorf("invalid path %q", path)
+	}
+	if segs[0].isIndex {
+		return nil, fmt.Errorf("invalid path %q: must start with a field name", path)
+	}
+	_ = expectKey
+	return segs, nil
+}
+
+// setPath sets value at segs within doc (a map), creating intermediate maps and
+// slices as needed, and returns the updated map.
+func setPath(doc map[string]interface{}, segs []segment, value interface{}) (map[string]interface{}, error) {
+	updated, err := setIn(doc, segs, value)
+	if err != nil {
+		return nil, err
+	}
+	m, ok := updated.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("internal error: root is not an object")
+	}
+	return m, nil
+}
+
+func setIn(node interface{}, segs []segment, value interface{}) (interface{}, error) {
+	if len(segs) == 0 {
+		return value, nil
+	}
+	seg := segs[0]
+	if seg.isIndex {
+		var slice []interface{}
+		if node != nil {
+			s, ok := node.([]interface{})
+			if !ok {
+				return nil, fmt.Errorf("path conflict: expected an array")
+			}
+			slice = s
+		}
+		for len(slice) <= seg.index {
+			slice = append(slice, nil)
+		}
+		child, err := setIn(slice[seg.index], segs[1:], value)
+		if err != nil {
+			return nil, err
+		}
+		slice[seg.index] = child
+		return slice, nil
+	}
+	var m map[string]interface{}
+	if node != nil {
+		mm, ok := node.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("path conflict: expected an object at %q", seg.key)
+		}
+		m = mm
+	} else {
+		m = map[string]interface{}{}
+	}
+	child, err := setIn(m[seg.key], segs[1:], value)
+	if err != nil {
+		return nil, err
+	}
+	m[seg.key] = child
+	return m, nil
+}
+
+// deepMerge merges over into base (over wins) and returns base. Objects are
+// merged recursively; all other values are replaced.
+func deepMerge(base, over map[string]interface{}) map[string]interface{} {
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	for k, ov := range over {
+		if bv, ok := base[k]; ok {
+			bm, bok := bv.(map[string]interface{})
+			om, ook := ov.(map[string]interface{})
+			if bok && ook {
+				base[k] = deepMerge(bm, om)
+				continue
+			}
+		}
+		base[k] = ov
+	}
+	return base
+}
+
+// buildDefaults turns configured default field paths into a document, coercing
+// values by their schema type and dropping fields unknown to the schema.
+func buildDefaults(defaults map[string]string, schema Schema, warn io.Writer) (map[string]interface{}, error) {
+	doc := map[string]interface{}{}
+	keys := make([]string, 0, len(defaults))
+	for k := range defaults {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, field := range keys {
+		segs, err := parsePath(field)
+		if err != nil {
+			return nil, err
+		}
+		top := segs[0].key
+		if schema.Known {
+			if _, ok := schema.Fields[top]; !ok {
+				if warn != nil {
+					fmt.Fprintf(warn, "warning: ignoring default %q: not a field of this operation's request body\n", field)
+				}
+				continue
+			}
+		}
+		value := coerce(schema.Fields[top], defaults[field])
+		doc, err = setPath(doc, segs, value)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return doc, nil
+}
+
+// coerce converts a string default value to the JSON type declared by the
+// schema. String fields (and unknown types) keep the raw string; other types
+// are JSON-parsed, falling back to the string on failure.
+func coerce(jsonType, val string) interface{} {
+	switch jsonType {
+	case "", "string":
+		return val
+	default:
+		var v interface{}
+		if err := json.Unmarshal([]byte(val), &v); err == nil {
+			return v
+		}
+		return val
+	}
+}
+
+func validate(doc map[string]interface{}, schema Schema) error {
+	if !schema.Known {
+		return nil
+	}
+	valid := make([]string, 0, len(schema.Fields))
+	for f := range schema.Fields {
+		valid = append(valid, f)
+	}
+	sort.Strings(valid)
+	for key, value := range doc {
+		want, ok := schema.Fields[key]
+		if !ok {
+			return fmt.Errorf("unknown field %q; valid fields: %s", key, strings.Join(valid, ", "))
+		}
+		if !typeMatches(want, value) {
+			return fmt.Errorf("field %q expects %s, got %s", key, want, jsonTypeOf(value))
+		}
+	}
+	return nil
+}
+
+func typeMatches(want string, value interface{}) bool {
+	got := jsonTypeOf(value)
+	switch want {
+	case "number":
+		return got == "number" || got == "integer"
+	case "integer":
+		return got == "integer"
+	case "":
+		return true
+	default:
+		return got == want
+	}
+}
+
+func jsonTypeOf(value interface{}) string {
+	switch v := value.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return "boolean"
+	case float64:
+		if v == float64(int64(v)) {
+			return "integer"
+		}
+		return "number"
+	case json.Number:
+		if _, err := v.Int64(); err == nil {
+			return "integer"
+		}
+		return "number"
+	case string:
+		return "string"
+	case []interface{}:
+		return "array"
+	case map[string]interface{}:
+		return "object"
+	default:
+		return "unknown"
+	}
+}
+
+// PickToJQ compiles a dot/bracket path such as "choices[0].message.content"
+// into the equivalent gojq query ".choices[0].message.content".
+func PickToJQ(path string) (string, error) {
+	segs, err := parsePath(path)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, seg := range segs {
+		if seg.isIndex {
+			fmt.Fprintf(&b, "[%d]", seg.index)
+			continue
+		}
+		if isBareKey(seg.key) {
+			b.WriteString("." + seg.key)
+		} else {
+			fmt.Fprintf(&b, ".[%q]", seg.key)
+		}
+	}
+	if b.Len() == 0 {
+		return ".", nil
+	}
+	return b.String(), nil
+}
+
+func isBareKey(k string) bool {
+	if k == "" {
+		return false
+	}
+	for i, r := range k {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			continue
+		}
+		if i > 0 && r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// ApplyJQ runs a jq expression against a decoded JSON value and returns all
+// produced results.
+func ApplyJQ(expr string, input interface{}) ([]interface{}, error) {
+	query, err := gojq.Parse(expr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid jq expression %q: %w", expr, err)
+	}
+	iter := query.Run(input)
+	var out []interface{}
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if err, ok := v.(error); ok {
+			return nil, fmt.Errorf("jq error: %w", err)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
