@@ -65,8 +65,8 @@ openai chat create-chat-completion --data-json '{"model":"gpt-5-nano","messages"
 # after
 openai chat create-chat-completion model=gpt-5-nano messages:='[{"role":"user","content":"привет"}]'
 
-# with a configured default model and stdin content
-echo "объясни X" | openai chat create-chat-completion messages:='[{"role":"user","content":"@-"}]'
+# with a configured default model and stdin content (for an operation that has a top-level string field)
+echo "объясни X" | openai <tag> <operation> prompt=@-
 ```
 
 (`@-` inside `:=` raw JSON is NOT expanded — only `field=@-` string form reads
